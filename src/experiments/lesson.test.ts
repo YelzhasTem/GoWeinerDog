@@ -60,7 +60,7 @@ describe('bounded lesson and immutable experiences', () => {
     expect(changed.current).toBeNull();
     expect(changed.working.first).toBe(high);
     expect(changed.working.first?.notes.prediction).toBe(high.notes.prediction);
-    expect(changed.working.first?.result).toEqual({ ...high.result, reward: 150, steps: 100, treatEntries: 50, outcome: 'timeout' });
+    expect(changed.working.first?.result).toEqual({ ...high.result, reward: 12, steps: 5, treatEntries: 1, treatCollections: 1, outcome: 'goal' });
     expect(changed.drafts.trap).toEqual({ bonus: 1, prediction: '', observation: '' });
     expect(changed.savedPair).toBeNull();
   });
@@ -259,12 +259,19 @@ describe('restoring the last lesson safely', () => {
     ['Q shape', (data: LessonState) => { data.working.first!.model.q[0].pop(); }],
     ['Q nonfinite', (data: LessonState) => { data.working.first!.model.q[0][0] = Infinity; }],
     ['Q invalid blocked state', (data: LessonState) => { data.working.first!.model.q[35][0] = 1; }],
+    ['Q invalid collected blocked state', (data: LessonState) => { data.working.first!.model.q[71][0] = 1; }],
+    ['Q invalid collected home state', (data: LessonState) => { data.working.first!.model.q[41][0] = 1; }],
     ['Q changes route', (data: LessonState) => { data.working.first!.model.q[0][0] = 1999; }],
     ['trace', (data: LessonState) => { data.working.first!.result.transitions[0].to = 0; }],
     ['metric total', (data: LessonState) => { data.working.first!.result.reward = 151; }],
     ['partial training', (data: LessonState) => { data.working.first!.model.metrics.pop(); }],
     ['training totals', (data: LessonState) => { data.working.first!.model.updates += 1; }],
     ['algorithm version', (data: LessonState) => { data.working.first!.model.algorithmVersion = 'other'; }],
+    ['rules version', (data: LessonState) => { (data.working.first!.model as { rulesVersion: string }).rulesVersion = 'repeat-treat-v1'; }],
+    ['state encoding version', (data: LessonState) => { (data.working.first!.model as { stateEncodingVersion: string }).stateEncodingVersion = 'cell-v1'; }],
+    ['old Q shape', (data: LessonState) => { data.working.first!.model.q.splice(36); }],
+    ['collected reward count', (data: LessonState) => { data.working.first!.result.treatCollections += 1; }],
+    ['collection state', (data: LessonState) => { data.working.first!.result.states[1].treatCollected = false; }],
     ['mismatched duplicate notes', (data: LessonState) => { data.current = structuredClone(data.current); data.current!.notes.observation = 'Несогласованная копия'; }],
     ['mismatched explanation', (data: LessonState) => { data.savedPair!.explanation = 'Другой текст у той же пары'; }],
     ['same experience twice', (data: LessonState) => { data.working.second = data.working.first; }],

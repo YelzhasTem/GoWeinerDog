@@ -40,6 +40,7 @@ async function checkVisibleTrace(page: Page, expected: { reward: number; steps: 
   let previous = 0;
   let reward = 0;
   let entries = 0;
+  let collections = 0;
   for (const row of await trace.allTextContents()) {
     const match = row.match(/#\d+: (\d+):(\d+) → (\d+):(\d+) · .*? · ([+-]?\d+) очк\./);
     expect(match).not.toBeNull();
@@ -50,14 +51,18 @@ async function checkVisibleTrace(page: Page, expected: { reward: number; steps: 
     expect(to).toBeGreaterThanOrEqual(0);
     expect(to).toBeLessThanOrEqual(5);
     if (to === 1 && from !== to) entries += 1;
+    if (row.includes('лакомство собрано')) collections += 1;
     previous = to;
     reward += Number(match![5]);
   }
   expect(reward).toBe(expected.reward);
   expect(entries).toBe(expected.entries);
+  expect(collections).toBe(1);
   if (expected.finalCell !== undefined) expect(previous).toBe(expected.finalCell);
   await expect(page.getByTestId('reward-result')).toHaveText(String(reward));
   await expect(page.getByTestId('steps-result')).toHaveText(String(expected.steps));
+  await expect(page.getByTestId('treat-result')).toHaveText(String(entries));
+  await expect(page.getByTestId('treat-collections')).toHaveText(String(collections));
   await details.locator('summary').click();
 }
 
@@ -79,14 +84,14 @@ test.afterEach(async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('прогноз → ловушка → один новый бонус → новое обучение → сравнение → объяснение', async ({ page }, testInfo) => {
+test('прогноз → одно лакомство → новый бонус → новое обучение → тот же путь → объяснение', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   await page.addInitScript(() => {
     const host = window as typeof window & { lessonWritesForTest: number };
     host.lessonWritesForTest = 0;
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key: string, value: string) {
-      if (key === 'goweinerdog.lesson.v1') host.lessonWritesForTest += 1;
+      if (key === 'goweinerdog.lesson.v2') host.lessonWritesForTest += 1;
       return original.call(this, key, value);
     };
   });
@@ -97,82 +102,97 @@ test('прогноз → ловушка → один новый бонус → �
   await expectNoOverflow(page);
   const firstPrediction = page.getByLabel('Как лакомство повлияет на путь таксы?', { exact: true });
   await expect(firstPrediction).toHaveValue('');
-  await firstPrediction.fill('Думаю, такса будет возвращаться за лакомством, если за него дают много очков.');
-  await trainAndCheck(page, 'timeout');
-  await expect(page.getByTestId('reward-result')).toHaveText('150');
-  await expect(page.getByTestId('steps-result')).toHaveText('100');
+  await firstPrediction.fill('Ожидаю, что такса соберёт лакомство и пойдёт домой.');
+  await trainAndCheck(page, 'goal');
+  await expect(page.getByTestId('reward-result')).toHaveText('12');
+  await expect(page.getByTestId('steps-result')).toHaveText('5');
   await expect(page.getByText('Выполнено шагов', { exact: true }).first()).toBeVisible();
-  await checkVisibleTrace(page, { reward: 150, steps: 100, entries: 50 });
+  await checkVisibleTrace(page, { reward: 12, steps: 5, entries: 1, finalCell: 5 });
   await expect(page.getByTestId('storage-status')).toContainText('Занятие сохранено в этом браузере.');
   const writes = await page.evaluate(() => (window as typeof window & { lessonWritesForTest: number }).lessonWritesForTest);
-  await page.getByLabel('Скорость просмотра', { exact: true }).selectOption('12');
+  await page.getByLabel('Скорость просмотра', { exact: true }).selectOption('1');
   await page.getByRole('button', { name: 'Воспроизвести', exact: false }).click();
-  await expect(page.getByTestId('playback-step')).not.toHaveText('0 / 100');
+  await expect(page.getByTestId('playback-step')).not.toHaveText('0 / 5');
   await page.getByRole('button', { name: 'Пауза', exact: true }).click();
-  await expect(page.getByTestId('reward-result')).toHaveText('150');
-  await expect(page.getByTestId('steps-result')).toHaveText('100');
+  await expect(page.getByTestId('reward-result')).toHaveText('12');
+  await expect(page.getByTestId('steps-result')).toHaveText('5');
   expect(workers).toHaveLength(2);
   expect(await page.evaluate(() => (window as typeof window & { lessonWritesForTest: number }).lessonWritesForTest)).toBe(writes);
   const observation = page.getByLabel('Что делает такса? Опиши наблюдаемое поведение.', { exact: true });
   await expect(observation).toHaveValue('');
-  await observation.fill('Такса ходит туда и обратно у лакомства. До домика не дошла, хотя набрала 150 очков.');
+  await observation.fill('Такса собрала одно лакомство и дошла домой за 5 шагов, набрав 12 очков.');
   await page.getByRole('button', { name: 'Сохранить опыт и изменить бонус', exact: true }).click();
   await expect(page.getByTestId('experience-1-bonus')).toHaveText('+5');
-  await expect(page.getByTestId('experience-1-outcome')).toContainText('До домика не дошла');
-  await expect(page.getByTestId('experience-1-reason')).toHaveText('Лимит шагов');
-  await expect(page.getByTestId('experience-1-reward')).toHaveText('150');
-  await expect(page.getByTestId('experience-1-steps')).toHaveText('100');
-  await expect(page.getByTestId('experience-1-entries')).toHaveText('50');
+  await expect(page.getByTestId('experience-1-outcome')).toContainText('Да, дома!');
+  await expect(page.getByTestId('experience-1-reason')).toHaveText('Домик достигнут');
+  await expect(page.getByTestId('experience-1-reward')).toHaveText('12');
+  await expect(page.getByTestId('experience-1-steps')).toHaveText('5');
+  await expect(page.getByTestId('experience-1-entries')).toHaveText('1');
+  await expect(page.getByTestId('experience-1-collections')).toHaveText('1');
 
   await page.getByLabel('Бонус за лакомство', { exact: true }).selectOption('1');
   await expect(page.getByTestId('goal-result')).toHaveText('Не проверяли');
   await expect(page.getByTestId('playback-step')).toHaveText('— / —');
-  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 1 за каждый вход/);
+  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 1 за первый сбор в попытке/);
   await expect(page.getByTestId('experience-1-bonus')).toHaveText('+5');
-  await expect(page.getByTestId('experience-1-reward')).toHaveText('150');
+  await expect(page.getByTestId('experience-1-reward')).toHaveText('12');
   const secondPrediction = page.getByLabel('Что изменится при новом бонусе?', { exact: true });
   await expect(secondPrediction).toHaveValue('');
-  await secondPrediction.fill('При бонусе 1 возвращаться менее выгодно. Ожидаю путь прямо к домику.');
+  await secondPrediction.fill('При бонусе 1 ожидаю тот же путь к домику с меньшим числом очков.');
   await trainAndCheck(page, 'goal');
   await checkVisibleTrace(page, { reward: 8, steps: 5, entries: 1, finalCell: 5 });
-  await observation.fill('Теперь такса забрала лакомство один раз и дошла до домика за 5 шагов.');
+  await observation.fill('Путь остался прежним: одно лакомство и домик за 5 шагов; теперь 8 очков.');
   await page.getByText('Прогноз и наблюдение опыта 2', { exact: true }).click();
-  await page.getByLabel('Наблюдение опыта 2', { exact: true }).fill('Теперь такса забрала лакомство один раз и дошла до домика за 5 шагов.');
+  await page.getByLabel('Наблюдение опыта 2', { exact: true }).fill('Путь остался прежним: одно лакомство и домик за 5 шагов; теперь 8 очков.');
   await expect(page.getByTestId('experience-2-bonus')).toHaveText('+1');
   await expect(page.getByTestId('experience-2-outcome')).toContainText('Да, дома!');
   await expect(page.getByTestId('experience-2-reason')).toHaveText('Домик достигнут');
   await expect(page.getByTestId('experience-2-reward')).toHaveText('8');
   await expect(page.getByTestId('experience-2-steps')).toHaveText('5');
   await expect(page.getByTestId('experience-2-entries')).toHaveText('1');
+  await expect(page.getByTestId('experience-2-collections')).toHaveText('1');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('goweinerdog.lesson.v2')!));
+  expect(saved.version).toBe(2);
+  expect(saved.savedPair.first.result.positions).toEqual(saved.savedPair.second.result.positions);
+  expect(saved.savedPair.first.model.rulesVersion).toBe('treat-once-v2');
+  expect(saved.savedPair.second.model.rulesVersion).toBe('treat-once-v2');
+  // Условия различаются, но одинаковый настоящий маршрут — допустимый результат.
+  expect(saved.savedPair.first.result.reward).not.toBe(saved.savedPair.second.result.reward);
   await expect(page.getByTestId('comparison-difference')).toContainText(/5.*1/);
-  await expect(page.getByTestId('fixed-conditions')).toContainText('Совпадают площадка, seed, число попыток, лимиты, параметры обучения и остальные награды.');
+  await expect(page.getByTestId('fixed-conditions')).toContainText('Совпадают правила, формат состояния, площадка, seed, число попыток, лимиты, параметры обучения и остальные награды.');
   const explanation = page.getByLabel('Почему поведение изменилось или осталось прежним?', { exact: true });
   await expect(explanation).toHaveValue('');
-  await explanation.fill('Изменился только бонус. Раньше возвраты приносили много очков, теперь награда дома выгоднее повторного лакомства.');
+  await explanation.fill('Изменился только бонус. Лакомство осталось на единственной дорожке, поэтому путь тот же, а очков на 4 меньше.');
 
   // Просмотр старого опыта берёт его собственные условия, а не текущий бонус 1.
   await page.getByRole('button', { name: 'Путь опыта 1', exact: true }).click();
-  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 5 за каждый вход/);
-  await expect(page.getByTestId('playback-step')).toHaveText('0 / 100');
+  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 5 за первый сбор в попытке/);
+  await expect(page.getByTestId('playback-step')).toHaveText('0 / 5');
+  await expect(page.getByTestId('ground')).toHaveAttribute('data-treat-collected', 'false');
   await expect(page.getByTestId('saved-view')).toContainText('Сохранённый путь');
   await expect(page.getByTestId('episode-count')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Начать тренировку' })).toHaveCount(0);
-  await expect(page.locator('#prediction')).toHaveValue('Думаю, такса будет возвращаться за лакомством, если за него дают много очков.');
+  await expect(page.locator('#prediction')).toHaveValue('Ожидаю, что такса соберёт лакомство и пойдёт домой.');
   await expect(page.locator('#prediction')).toBeDisabled();
-  await expect(observation).toHaveValue('Такса ходит туда и обратно у лакомства. До домика не дошла, хотя набрала 150 очков.');
-  await checkVisibleTrace(page, { reward: 150, steps: 100, entries: 50 });
+  await expect(observation).toHaveValue('Такса собрала одно лакомство и дошла домой за 5 шагов, набрав 12 очков.');
+  await checkVisibleTrace(page, { reward: 12, steps: 5, entries: 1, finalCell: 5 });
   await page.getByRole('button', { name: 'Один шаг', exact: true }).click();
   await expect(page.getByTestId('ground')).toHaveAttribute('data-position', '1');
   await expect(page.getByTestId('transition-note')).toContainText('Награда: +4.');
+  await expect(page.getByTestId('transition-note')).toContainText('Лакомство собрано');
+  await expect(page.getByTestId('ground')).toHaveAttribute('data-treat-collected', 'true');
+  await page.getByRole('button', { name: 'Сначала', exact: true }).click();
+  await expect(page.getByTestId('ground')).toHaveAttribute('data-treat-collected', 'false');
+  await expect(page.getByTestId('treat-state')).toContainText('Лакомство доступно');
   await page.getByRole('button', { name: 'К текущему опыту', exact: true }).click();
-  await expect(page.locator('#prediction')).toHaveValue('При бонусе 1 возвращаться менее выгодно. Ожидаю путь прямо к домику.');
+  await expect(page.locator('#prediction')).toHaveValue('При бонусе 1 ожидаю тот же путь к домику с меньшим числом очков.');
   await expect(page.getByTestId('run-status')).toHaveText('Проверка завершена: такса добралась домой.');
   await page.getByRole('button', { name: 'Путь опыта 2', exact: true }).click();
-  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 1 за каждый вход/);
+  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 1 за первый сбор в попытке/);
   await expect(page.getByTestId('playback-step')).toHaveText('0 / 5');
-  await expect(page.getByTestId('experience-1-reward')).toHaveText('150');
+  await expect(page.getByTestId('experience-1-reward')).toHaveText('12');
   await expect(page.getByTestId('saved-view')).toContainText('Сохранённый путь');
-  await expect(page.locator('#prediction')).toHaveValue('При бонусе 1 возвращаться менее выгодно. Ожидаю путь прямо к домику.');
+  await expect(page.locator('#prediction')).toHaveValue('При бонусе 1 ожидаю тот же путь к домику с меньшим числом очков.');
 
   // Смена миссии отменяет текущий расчёт, но не меняет два зафиксированных опыта.
   await page.getByRole('button', { name: 'К текущему опыту', exact: true }).click();
@@ -180,12 +200,12 @@ test('прогноз → ловушка → один новый бонус → �
   await page.getByRole('button', { name: 'Ловушка лакомства', exact: true }).click();
   await expect(page.getByTestId('experience-1-bonus')).toHaveText('+5');
   await expect(page.getByTestId('experience-2-bonus')).toHaveText('+1');
-  await expect(explanation).toHaveValue('Изменился только бонус. Раньше возвраты приносили много очков, теперь награда дома выгоднее повторного лакомства.');
+  await expect(explanation).toHaveValue('Изменился только бонус. Лакомство осталось на единственной дорожке, поэтому путь тот же, а очков на 4 меньше.');
   await page.getByRole('button', { name: 'Путь опыта 1', exact: true }).click();
-  await expect(page.locator('#prediction')).toHaveValue('Думаю, такса будет возвращаться за лакомством, если за него дают много очков.');
-  await expect(observation).toHaveValue('Такса ходит туда и обратно у лакомства. До домика не дошла, хотя набрала 150 очков.');
+  await expect(page.locator('#prediction')).toHaveValue('Ожидаю, что такса соберёт лакомство и пойдёт домой.');
+  await expect(observation).toHaveValue('Такса собрала одно лакомство и дошла домой за 5 шагов, набрав 12 очков.');
   await page.getByRole('button', { name: 'Путь опыта 2', exact: true }).click();
-  await expect(observation).toHaveValue('Теперь такса забрала лакомство один раз и дошла до домика за 5 шагов.');
+  await expect(observation).toHaveValue('Путь остался прежним: одно лакомство и домик за 5 шагов; теперь 8 очков.');
   expect(workers).toHaveLength(4); // Два обучения и две проверки; воспроизведение не учится.
   for (const url of workers) expect(url).toMatch(/\/assets\/lab\.worker-[\w-]+\.js$/);
   await expectNoOverflow(page);
@@ -193,9 +213,9 @@ test('прогноз → ловушка → один новый бонус → �
 
   await page.reload();
   await expect(page.getByRole('heading', { name: /Ловушка лакомства/ })).toBeVisible();
-  await expect(page.getByTestId('experience-1-reward')).toHaveText('150');
+  await expect(page.getByTestId('experience-1-reward')).toHaveText('12');
   await expect(page.getByTestId('experience-2-reward')).toHaveText('8');
-  await expect(explanation).toHaveValue('Изменился только бонус. Раньше возвраты приносили много очков, теперь награда дома выгоднее повторного лакомства.');
+  await expect(explanation).toHaveValue('Изменился только бонус. Лакомство осталось на единственной дорожке, поэтому путь тот же, а очков на 4 меньше.');
 });
 
 test('изменение бонуса отменяет настоящий Worker; новый запуск не принимает старые результаты', async ({ page }) => {
@@ -218,7 +238,7 @@ test('изменение бонуса отменяет настоящий Worker
   await trainAndCheck(page, 'goal');
   await expect(page.getByTestId('reward-result')).toHaveText('8');
   await expect(page.getByTestId('steps-result')).toHaveText('5');
-  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 1 за каждый вход/);
+  await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 1 за первый сбор в попытке/);
   await page.getByLabel('Что делает такса? Опиши наблюдаемое поведение.', { exact: true }).fill('После отмены новое обучение дошло домой.');
   await page.getByRole('button', { name: 'Сохранить опыт и изменить бонус', exact: true }).click();
   await expect(page.getByTestId('experience-1-bonus')).toHaveText('+1');
@@ -248,9 +268,9 @@ test('смена миссии отменяет тренировку и восп�
   await expect(page.getByTestId('episode-count')).toHaveText('0 / 800');
 
   await page.getByRole('button', { name: 'Ловушка лакомства', exact: true }).click();
-  await trainAndCheck(page, 'timeout');
+  await trainAndCheck(page, 'goal');
   await expect(page.getByRole('button', { name: 'Пауза', exact: true })).toBeVisible();
-  await expect(page.getByTestId('playback-step')).not.toHaveText('0 / 100');
+  await expect(page.getByTestId('playback-step')).not.toHaveText('0 / 5');
   await page.getByRole('button', { name: 'Дорога домой', exact: true }).click();
   await expect(page.getByTestId('ground')).toHaveAttribute('data-position', '0');
   await expect(page.getByTestId('playback-step')).toHaveText('— / —');

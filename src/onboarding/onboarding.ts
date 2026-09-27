@@ -14,11 +14,14 @@ export interface OnboardingContext {
   readonly viewingSaved: boolean;
   readonly hasModel: boolean;
   readonly hasResult: boolean;
+  /** Есть прежний результат первой миссии v1, но ещё нет соответствующего опыта v2. */
+  readonly hasArchivedHome?: boolean;
   readonly status: LabState['status'];
 }
 export type OnboardingAction =
   | { type: 'BEGIN' | 'RESTART' | 'SKIP' | 'FINISH' | 'DISMISS_TRAP_HINT' }
   | { type: 'NEXT'; context: OnboardingContext; answered?: boolean }
+  | { type: 'CONTINUE_WITH_NEW_TRAINING'; context: OnboardingContext }
   | { type: 'SYNC'; context: OnboardingContext };
 
 export const ONBOARDING_STORAGE_KEY = 'goweinerdog.onboarding.v1';
@@ -38,9 +41,17 @@ function isPracticalContext(context: OnboardingContext): boolean {
   return context.mission === 'home' && !context.viewingSaved;
 }
 
+/** Архив не становится новой моделью: поздний шаг ждёт явного выбора ученика. */
+export function isOnboardingArchivePaused(state: OnboardingState, context: OnboardingContext): boolean {
+  return state.status === 'in-progress' && ['observation', 'question', 'finish'].includes(state.step)
+    && context.hasArchivedHome === true && !context.hasModel && !context.hasResult
+    && context.status !== 'training' && context.status !== 'evaluating';
+}
+
 /** Подсказка следует реальным данным, а не проценту прогресса или таймеру. */
 export function reconcileOnboarding(state: OnboardingState, context: OnboardingContext): OnboardingState {
   if (state.status !== 'in-progress' || !isPracticalContext(context)
+    || isOnboardingArchivePaused(state, context)
     || state.step === 'welcome' || state.step === 'ground' || state.step === 'prediction') return state;
 
   // После перезагрузки незавершённый Worker не существует. Отсутствие модели
@@ -72,8 +83,12 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
       return state.trapHintDismissed ? state : { ...state, trapHintDismissed: true };
     case 'SYNC':
       return reconcileOnboarding(state, action.context);
+    case 'CONTINUE_WITH_NEW_TRAINING':
+      return isOnboardingArchivePaused(state, action.context) && isPracticalContext(action.context)
+        ? { ...state, step: 'training' } : state;
     case 'NEXT': {
-      if (state.status !== 'in-progress' || !isPracticalContext(action.context)) return state;
+      if (state.status !== 'in-progress' || !isPracticalContext(action.context)
+        || isOnboardingArchivePaused(state, action.context)) return state;
       const actual = reconcileOnboarding(state, action.context);
       // При смене реального состояния сначала показываем соответствующую
       // подсказку. Старое нажатие не должно проскочить ещё один этап.

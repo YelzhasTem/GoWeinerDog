@@ -101,7 +101,7 @@ export function TrapHint({ onDismiss }: { onDismiss: () => void }) {
   return <aside className="onboarding-trap-hint" aria-labelledby="trap-hint-title">
     <div><strong id="trap-hint-title">Теперь — твоя идея</strong>
       <p>Измени только бонус за лакомство → запиши новый прогноз → обучи заново → проверь путь → сравни два опыта.</p>
-      <p>Так проще заметить, как одна награда влияет на поведение.</p>
+      <p>Лакомство собирается один раз за попытку. Другой бонус может изменить путь, но путь может и остаться прежним — объясни то, что получилось.</p>
     </div>
     <button className="text-button" onClick={onDismiss} aria-label="Скрыть подсказку об эксперименте">Понятно</button>
   </aside>;

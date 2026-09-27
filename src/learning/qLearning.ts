@@ -1,6 +1,6 @@
 import { ACTIONS, type Action, type QTable, type ReadonlyQTable, type Transition } from '../domain/types';
 
-export const ALGORITHM_VERSION = 'tabular-q-learning-v1';
+export const ALGORITHM_VERSION = 'tabular-q-learning-v2';
 
 export function createQTable(states: number): QTable {
   if (!Number.isInteger(states) || states < 1) throw new Error('Число состояний должно быть положительным целым.');
@@ -9,10 +9,10 @@ export function createQTable(states: number): QTable {
 
 /** Домик завершает задачу. Лимит шагов сюда не входит: будущая оценка остаётся. */
 export function updateQ(q: QTable, transition: Transition, alpha: number, gamma: number): number {
-  const previous = q[transition.from][transition.action];
-  const future = transition.terminated ? 0 : gamma * Math.max(...q[transition.to]);
+  const previous = q[transition.fromState][transition.action];
+  const future = transition.terminated ? 0 : gamma * Math.max(...q[transition.toState]);
   const next = previous + alpha * (transition.reward + future - previous);
-  q[transition.from][transition.action] = next;
+  q[transition.fromState][transition.action] = next;
   return next;
 }
 

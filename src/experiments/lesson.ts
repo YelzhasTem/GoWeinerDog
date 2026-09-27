@@ -1,4 +1,6 @@
 import type { EvaluationResult, TrainingResult } from '../domain/types';
+import { decodeState, RULES_VERSION, STATE_ENCODING_VERSION, stateCount } from '../domain/state';
+import { loadLegacyLesson } from './legacy';
 import { evaluate } from '../evaluation/evaluate';
 import { ALGORITHM_VERSION } from '../learning/qLearning';
 import { PRNG_VERSION } from '../learning/random';
@@ -16,7 +18,7 @@ export interface Experience {
 }
 export interface ExperiencePair { first: Experience; second: Experience; explanation: string }
 export interface LessonState {
-  version: 1;
+  version: 2;
   mission: Mission;
   drafts: {
     home: { seedText: string; prediction: string; observation: string };
@@ -40,7 +42,7 @@ export type LessonAction =
   | { type: 'commitPair' }
   | { type: 'restart' };
 
-export const STORAGE_KEY = 'goweinerdog.lesson.v1';
+export const STORAGE_KEY = 'goweinerdog.lesson.v2';
 export const MAX_STORAGE_LENGTH = 1_500_000;
 const MAX_NOTE_LENGTH = 1500;
 export interface StorageLike { getItem(key: string): string | null; setItem(key: string, value: string): void }
@@ -48,7 +50,7 @@ type StorageProvider = StorageLike | (() => StorageLike);
 
 export function emptyLesson(): LessonState {
   return {
-    version: 1, mission: 'home',
+    version: 2, mission: 'home',
     drafts: {
       home: { seedText: String(DEFAULT_TRAINING.seed), prediction: '', observation: '' },
       trap: { bonus: TRAP_ENVIRONMENT.rewards.treat, prediction: '', observation: '' },
@@ -98,7 +100,7 @@ function validNotes(value: unknown): ExperimentNotes {
 
 /** При восстановлении не обучаем заново: проверяем форму Q и пересчитываем её короткий проверочный путь. */
 function validateModel(value: unknown, selected: Mission): TrainingResult {
-  const model = record(value, ['q', 'config', 'environment', 'metrics', 'updates', 'algorithmVersion', 'prngVersion']);
+  const model = record(value, ['q', 'config', 'environment', 'metrics', 'updates', 'algorithmVersion', 'prngVersion', 'rulesVersion', 'stateEncodingVersion']);
   const config = record(model.config, Object.keys(DEFAULT_TRAINING));
   invariant(Number.isInteger(config.seed) && Number(config.seed) >= 0 && Number(config.seed) <= 0xffffffff);
   const expectedConfig = selected === 'home' ? { ...DEFAULT_TRAINING, seed: config.seed } : TRAP_TRAINING;
@@ -110,9 +112,11 @@ function validateModel(value: unknown, selected: Mission): TrainingResult {
   };
   invariant(same(environment, expectedEnvironment), 'Сохранённая площадка не соответствует миссии.');
   invariant(model.algorithmVersion === ALGORITHM_VERSION && model.prngVersion === PRNG_VERSION, 'Версия алгоритма сохранённого опыта не поддерживается.');
-  invariant(Array.isArray(model.q) && model.q.length === 36);
-  for (let cell = 0; cell < model.q.length; cell += 1) {
-    const row: unknown = model.q[cell];
+  invariant(model.rulesVersion === RULES_VERSION && model.stateEncodingVersion === STATE_ENCODING_VERSION, 'Версия правил или состояния не соответствует текущему занятию.');
+  invariant(Array.isArray(model.q) && model.q.length === stateCount(environment));
+  for (let index = 0; index < model.q.length; index += 1) {
+    const { cell } = decodeState(environment, index);
+    const row: unknown = model.q[index];
     invariant(Array.isArray(row) && row.length === 4 && row.every((entry) => typeof entry === 'number' && Number.isFinite(entry) && Math.abs(entry) <= 2000));
     if (environment.fences.includes(cell) || cell === environment.home) invariant(row.every((entry) => entry === 0));
   }
@@ -171,7 +175,8 @@ export function lessonReducer(state: LessonState, action: LessonAction): LessonS
     }
     case 'complete': {
       const experience = action.experience;
-      if (experience.missionId !== state.mission) return state;
+      if (experience.missionId !== state.mission || experience.model.rulesVersion !== RULES_VERSION
+        || experience.model.stateEncodingVersion !== STATE_ENCODING_VERSION) return state;
       // Дополнительная защита слоя занятия: запоздавший результат с прежними
       // условиями не должен становиться текущим после сброса контроллера.
       if (experience.missionId === 'trap' ? experience.model.environment.rewards.treat !== state.drafts.trap.bonus
@@ -227,7 +232,7 @@ export function lessonReducer(state: LessonState, action: LessonAction): LessonS
 
 function parseLesson(value: unknown): LessonState {
   const input = record(value, ['version', 'mission', 'drafts', 'current', 'home', 'working', 'savedPair']);
-  invariant(input.version === 1, 'Версия сохранённого занятия не поддерживается.');
+  invariant(input.version === 2, 'Версия сохранённого занятия не поддерживается.');
   const selected = mission(input.mission);
   const drafts = record(input.drafts, ['home', 'trap']);
   const homeDraft = record(drafts.home, ['seedText', 'prediction', 'observation']);
@@ -273,7 +278,7 @@ function parseLesson(value: unknown): LessonState {
       'Условия текущего опыта не совпадают с выбранными настройками.');
   }
   return {
-    version: 1, mission: selected,
+    version: 2, mission: selected,
     drafts: {
       home: { seedText: seedText(homeDraft.seedText), prediction: note(homeDraft.prediction), observation: note(homeDraft.observation) },
       trap: { bonus: bonus(trapDraft.bonus), prediction: note(trapDraft.prediction), observation: note(trapDraft.observation) },
@@ -288,7 +293,18 @@ function storageFrom(provider?: StorageProvider): StorageLike {
 export function loadLesson(provider?: StorageProvider): { state: LessonState; warning: string | null } {
   try {
     const raw = storageFrom(provider).getItem(STORAGE_KEY);
-    if (raw === null) return { state: emptyLesson(), warning: null };
+    if (raw === null) {
+      const legacy = loadLegacyLesson(provider);
+      const state = emptyLesson();
+      // Меняем только черновик условий. Старые Q, путь и записи остаются
+      // отдельным архивом v1 и никогда не становятся результатом правил v2.
+      if (legacy.state) {
+        state.mission = legacy.state.mission;
+        state.drafts.home.seedText = legacy.state.drafts.home.seedText;
+        state.drafts.trap.bonus = legacy.state.drafts.trap.bonus;
+      }
+      return { state, warning: legacy.warning };
+    }
     invariant(raw.length <= MAX_STORAGE_LENGTH, 'Сохранённое занятие слишком большое.');
     return { state: parseLesson(JSON.parse(raw)), warning: null };
   } catch {
@@ -297,6 +313,9 @@ export function loadLesson(provider?: StorageProvider): { state: LessonState; wa
 }
 export function saveLesson(state: LessonState, provider?: StorageProvider): { ok: true } | { ok: false; error: string } {
   try {
+    invariant(state.version === 2);
+    invariant(allExperiences(state).every((experience) => experience.model.rulesVersion === RULES_VERSION
+      && experience.model.stateEncodingVersion === STATE_ENCODING_VERSION));
     const raw = JSON.stringify(state);
     invariant(raw.length <= MAX_STORAGE_LENGTH);
     storageFrom(provider).setItem(STORAGE_KEY, raw);

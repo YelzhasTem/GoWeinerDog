@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ONBOARDING_KEY } from './helpers';
 
-const LESSON_KEY = 'goweinerdog.lesson.v1';
+const LESSON_KEY = 'goweinerdog.lesson.v2';
 const card = (page: Page) => page.getByTestId('onboarding-card');
 const welcome = (page: Page) => page.getByRole('button', { name: 'Начать знакомство', exact: true });
 
@@ -145,7 +145,9 @@ test('первый вход → реальное обучение → прове
   const analysis = page.getByText('Разбор эксперимента', { exact: true });
   await expect(analysis).toBeVisible();
   await expect(analysis.locator('..')).not.toHaveAttribute('open', '');
-  await expect(page.getByText(/При бонусе \+5 уйти/)).not.toBeVisible();
+  const example = page.getByText(/При бонусе \+5 первый вход/);
+  await expect(example).toHaveCount(1);
+  await expect(example).not.toBeVisible();
 
   // Сброс занятия очищает опыты, но не стирает отдельное завершённое знакомство.
   await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();

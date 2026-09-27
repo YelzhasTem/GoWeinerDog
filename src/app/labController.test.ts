@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EnvironmentConfig, EvaluationResult, TrainingConfig, TrainingProgress, TrainingResult } from '../domain/types';
 import type { WorkerRequest, WorkerResponse } from '../workers/protocol';
 import { createLabController, type LabWorker } from './labController';
+import { step } from '../domain/environment';
+import { initialState, RULES_VERSION, STATE_ENCODING_VERSION } from '../domain/state';
 
 class FakeWorker implements LabWorker {
   onmessage: LabWorker['onmessage'] = null;
@@ -23,13 +25,15 @@ function fixture() {
     epsilonStart: 1, epsilonEnd: 0.05, decayFraction: 0.8,
   };
   const result: TrainingResult = {
-    environment, config, q: [[0, 19, 0, 0], [0, 0, 0, 0]],
+    environment, config, q: [[0, 19, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     metrics: [{ episode: 1, reward: 19, steps: 1, outcome: 'goal' }],
     updates: 1, algorithmVersion: 'test', prngVersion: 'test',
+    rulesVersion: RULES_VERSION, stateEncodingVersion: STATE_ENCODING_VERSION,
   };
   const evaluation: EvaluationResult = {
-    transitions: [{ from: 0, to: 1, action: 1, reward: 19, collision: false, moved: true, enteredTreat: false, terminated: true, rewardParts: { step: -1, collision: 0, home: 20, treat: 0 } }],
+    transitions: [step(environment, initialState(environment), 1)],
     positions: [0, 1], reward: 19, steps: 1, outcome: 'goal', treatEntries: 0, collisions: 0,
+    states: [initialState(environment), { cell: 1, treatCollected: false }], treatCollections: 0,
   };
   const progress: TrainingProgress = {
     completed: 20, total: 40, last: { episode: 20, reward: 19, steps: 1, outcome: 'goal' },

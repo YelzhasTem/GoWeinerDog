@@ -2,7 +2,9 @@ import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'r
 import { createLabController } from './labController';
 import { DEFAULT_TRAINING, HOME_ENVIRONMENT, TRAP_ENVIRONMENT, TRAP_TRAINING } from '../missions';
 import { canStartTrap, captureLessonExperience, emptyLesson, lessonReducer, loadLesson, saveLesson, type Experience, type Mission } from '../experiments/lesson';
-import { loadOnboarding, onboardingReducer, reconcileOnboarding, saveOnboarding, type OnboardingContext } from '../onboarding/onboarding';
+import { LEGACY_RULES_VERSION, loadLegacyLesson, type LegacyExperience } from '../experiments/legacy';
+import { RULES_VERSION } from '../domain/state';
+import { isOnboardingArchivePaused, loadOnboarding, onboardingReducer, reconcileOnboarding, saveOnboarding, type OnboardingContext } from '../onboarding/onboarding';
 import type { EnvironmentConfig, TrainingConfig } from '../domain/types';
 import { Panel, PixelButton } from '../ui/controls';
 import { TrainingGround } from '../ui/TrainingGround';
@@ -21,13 +23,15 @@ const sectionNames = { lab: 'Лаборатория', experiments: 'Мои оп�
 const format = new Intl.NumberFormat('ru-RU');
 const rewardText = (value: number) => `${value < 0 ? '−' : '+'}${format.format(Math.abs(value))}`;
 
-function Conditions({ environment, config, children }: { environment: EnvironmentConfig; config: TrainingConfig; children?: React.ReactNode }) {
+function Conditions({ environment, config, children, rulesVersion = RULES_VERSION }: { environment: EnvironmentConfig; config: TrainingConfig; children?: React.ReactNode; rulesVersion?: string }) {
+  const legacy = rulesVersion === LEGACY_RULES_VERSION;
   const coordinate = (cell: number) => `${Math.floor(cell / environment.width) + 1}:${cell % environment.width + 1}`;
   return <details className="conditions-details"><summary>Подробнее об условиях</summary>
     {children}
+    <p>{legacy ? 'Архив · правила v1: повторяемое лакомство, состояние — клетка.' : 'Правила v2: одно лакомство за попытку, состояние — клетка и признак сбора.'}</p>
     <p>Площадка {environment.width} × {environment.height}. Строка:столбец — старт {coordinate(environment.start)}, домик {coordinate(environment.home)}{environment.treat !== undefined ? `, лакомство ${coordinate(environment.treat)}` : ''}.</p>
     <p>Ограждения: {environment.fences.map(coordinate).join(', ')}.</p>
-    <p>Награды: шаг {rewardText(environment.rewards.step)}, домик {rewardText(environment.rewards.home)}, столкновение — дополнительно {rewardText(environment.rewards.collision)}{environment.treat !== undefined ? `, лакомство ${rewardText(environment.rewards.treat)} за каждый вход` : '. Лакомства нет'}.</p>
+    <p>Награды: шаг {rewardText(environment.rewards.step)}, домик {rewardText(environment.rewards.home)}, столкновение — дополнительно {rewardText(environment.rewards.collision)}{environment.treat !== undefined ? `, лакомство ${rewardText(environment.rewards.treat)} ${legacy ? 'за каждый вход (архивные правила v1)' : 'за первый сбор в попытке, включая бонус 0'}` : '. Лакомства нет'}.</p>
     <p>{config.episodes} попыток, до {config.maxSteps} шагов в каждой. Проверка тоже ограничена {config.maxSteps} шагами. Seed {config.seed} задаёт начало случайной последовательности.</p>
     <p>Q-learning: вес нового опыта (alpha) — {format.format(config.alpha)}; учёт будущих наград (gamma) — {format.format(config.gamma)}. Случайные действия (epsilon): от {config.epsilonStart * 100}% до {config.epsilonEnd * 100}% за {config.episodes * config.decayFraction} попыток, затем {config.epsilonEnd * 100}%.</p>
     <p>При проверке нет случайного исследования или изменений Q. При равных оценках порядок выбора: вверх, вправо, вниз, влево.</p>
@@ -36,13 +40,14 @@ function Conditions({ environment, config, children }: { environment: Environmen
 
 export function App() {
   const [initial] = useState(() => loadLesson());
+  const [legacyInitial] = useState(() => loadLegacyLesson());
   const [lesson, dispatch] = useReducer(lessonReducer, initial.state);
   const [onboardingInitial] = useState(() => loadOnboarding());
   const [onboarding, guideDispatch] = useReducer(onboardingReducer, onboardingInitial.state);
   const [onboardingIssue, setOnboardingIssue] = useState(onboardingInitial.issue);
   const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
   const onboardingWritten = useRef(onboarding);
-  const [existingLesson] = useState(() => JSON.stringify(initial.state) !== JSON.stringify(emptyLesson()));
+  const [existingLesson] = useState(() => Boolean(legacyInitial.state) || JSON.stringify(initial.state) !== JSON.stringify(emptyLesson()));
   const [controller] = useState(() => createLabController());
   const lab = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [section, setSection] = useState<Section>('lab');
@@ -67,7 +72,11 @@ export function App() {
   const activeEnvironment = isTrap ? { ...TRAP_ENVIRONMENT, rewards: { ...TRAP_ENVIRONMENT.rewards, treat: bonus } } : HOME_ENVIRONMENT;
   const config = isTrap ? TRAP_TRAINING : { ...DEFAULT_TRAINING, seed };
   const records = [lesson.current, lesson.home, lesson.working.first, lesson.working.second, lesson.savedPair?.first, lesson.savedPair?.second];
-  const viewed = records.find((record) => record?.id === viewingId) ?? null;
+  const legacyLesson = legacyInitial.state;
+  const legacyRecords = [...new Map((legacyLesson ? [legacyLesson.current, legacyLesson.home, legacyLesson.working.first, legacyLesson.working.second, legacyLesson.savedPair?.first, legacyLesson.savedPair?.second] : [])
+    .filter((record): record is LegacyExperience => !!record).map((record) => [record.id, record])).values()];
+  const viewedLegacy = legacyRecords.find((record) => `legacy:${record.id}` === viewingId) ?? null;
+  const viewed = viewedLegacy ?? records.find((record) => record?.id === viewingId) ?? null;
   const current = lesson.current;
   const shown = viewed ?? current;
   // Просмотр снимка меняет только отображаемый контекст, не черновик новой тренировки.
@@ -75,6 +84,7 @@ export function App() {
   const result = shown?.result ?? lab.evaluation;
   const environment = shown?.model.environment ?? lab.model?.environment ?? activeEnvironment;
   const displayConfig = shown?.model.config ?? lab.model?.config ?? config;
+  const displayRulesVersion = viewedLegacy ? LEGACY_RULES_VERSION : RULES_VERSION;
   const visibleCursor = Math.min(cursor, result?.steps ?? 0);
   const total = config.episodes;
   const completed = lab.model?.metrics.length ?? lab.progress?.completed ?? (current ? current.model.metrics.length : 0);
@@ -92,16 +102,18 @@ export function App() {
     mission: lesson.mission, viewingSaved: !!viewed, status: lab.status,
     hasModel: lab.status !== 'training' && Boolean(lab.model || currentBelongsToRun),
     hasResult: !busy && Boolean(currentBelongsToRun || lab.evaluation),
+    hasArchivedHome: Boolean(legacyLesson?.home && !lesson.home),
   };
+  const archiveGuidePaused = isOnboardingArchivePaused(onboarding, guideContext);
   const guide = reconcileOnboarding(onboarding, guideContext);
   const showWelcome = section === 'lab' && (guide.status === 'new' && !existingLesson || guide.status === 'in-progress' && guide.step === 'welcome');
   const guiding = guide.status === 'in-progress' && guide.step !== 'welcome';
-  const guideInLab = guiding && section === 'lab' && !isTrap && !viewed;
+  const guideInLab = guiding && section === 'lab' && !isTrap && !viewed && !archiveGuidePaused;
   const highlight = (step: string) => guideInLab && guide.step === step ? ' onboarding-target' : '';
 
   useEffect(() => {
     guideDispatch({ type: 'SYNC', context: guideContext });
-  }, [lesson.mission, !!viewed, guideContext.hasModel, guideContext.hasResult, lab.status]);
+  }, [lesson.mission, !!viewed, guideContext.hasModel, guideContext.hasResult, guideContext.hasArchivedHome, lab.status]);
   useEffect(() => {
     if (onboardingWritten.current === onboarding) return;
     onboardingWritten.current = onboarding;
@@ -193,6 +205,10 @@ export function App() {
     setViewingId(experience.id); setPlaying(false); setCursor(0);
     window.requestAnimationFrame(() => document.getElementById('ground-title')?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' }));
   }
+  function showLegacyExperience(experience: LegacyExperience) {
+    setViewingId(`legacy:${experience.id}`); setPlaying(false); setCursor(0);
+    window.requestAnimationFrame(() => document.getElementById('ground-title')?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' }));
+  }
   function returnToCurrent() { setViewingId(null); setPlaying(false); }
   function switchSection(next: Section) { setSection(next); setPlaying(false); }
   function focusLaboratory() {
@@ -218,11 +234,19 @@ export function App() {
     if (toTrap) switchMission('trap');
     focusLaboratory();
   }
+  function continueOnboardingWithNewTraining() {
+    guideDispatch({ type: 'CONTINUE_WITH_NEW_TRAINING', context: guideContext });
+    setQuizAnswer(null);
+    setNotice('Прогресс знакомства продолжится с новой тренировкой. Прежний опыт остаётся в архиве v1.');
+  }
   function restart() {
     resetOperation(); dispatch({ type: 'restart' }); setSection('lab');
-    setNotice('Начато новое занятие. Предыдущие результаты очищены.');
+    setNotice(legacyLesson ? 'Результаты нового занятия очищены. Архив v1 сохранён.' : 'Начато новое занятие. Предыдущие результаты очищены.');
   }
-  function updateObservation(experience: Experience, value: string) { dispatch({ type: 'observation', id: experience.id, value }); }
+  function updateObservation(experience: Experience | LegacyExperience, value: string) {
+    if (viewedLegacy && experience.id === viewedLegacy.id) return;
+    dispatch({ type: 'observation', id: experience.id, value });
+  }
   function play() {
     if (!result) return;
     if (cursor >= result.steps) setCursor(0);
@@ -241,16 +265,16 @@ export function App() {
   const forecast = <div className={highlight('prediction')}><label htmlFor="prediction">{predictionLabel}</label><textarea id="prediction" rows={2} maxLength={500} value={shown?.notes.prediction ?? draft.prediction} disabled={busy || !!lab.model || !!shown} aria-describedby={guideInLab && guide.step === 'prediction' ? 'onboarding-instruction' : undefined} placeholder="Думаю, такса…" onChange={(event) => dispatch({ type: 'draft', mission: lesson.mission, patch: { prediction: event.target.value } })} /><p className="field-hint">{shown || lab.model ? 'Прогноз записан до тренировки.' : 'Твоё предположение. Можно пропустить.'}</p></div>;
   const playground = <section className={`stage-area${highlight('ground')}`} aria-labelledby="ground-title">
     <Panel className="stage-panel"><div className="panel-topline"><h2 id="ground-title">{environment.treat !== undefined ? 'Дорожка с лакомством' : 'Тренировочная площадка'}</h2><span className="small-tag">{result ? 'Проверка' : busy ? 'Тренировка' : 'Площадка'}</span></div>
-      {viewed && <div className="saved-view-banner" data-testid="saved-view">Сохранённый путь · {viewed.missionId === 'trap' ? `бонус +${environment.rewards.treat}` : 'Дорога домой'}{section !== 'lab' && <button type="button" className="text-button" onClick={returnToCurrent}>К текущему опыту</button>}</div>}
-      <TrainingGround environment={environment} evaluation={result} cursor={visibleCursor} compact={environment.treat !== undefined} />
+      {viewed && <div className="saved-view-banner" data-testid="saved-view">{viewedLegacy ? 'Архив · правила v1 · исходный путь' : 'Сохранённый путь · правила v2'} · {viewed.missionId === 'trap' ? `бонус +${environment.rewards.treat}` : 'Дорога домой'}{section !== 'lab' && <button type="button" className="text-button" onClick={returnToCurrent}>К текущему опыту</button>}</div>}
+      <TrainingGround environment={environment} evaluation={result} cursor={visibleCursor} compact={environment.treat !== undefined} rulesVersion={displayRulesVersion} />
       <div className="legend stage-legend" aria-label="Обозначения площадки"><span><img src={dog} alt="" />Такса</span><span><img src={home} alt="" />Домик</span>{environment.treat !== undefined ? <span><img src={treat} alt="" />Лакомство</span> : <span><img src={fence} alt="" />Ограждение</span>}</div>
       {environment.treat !== undefined && <p className="corridor-note">Показана открытая дорожка. Остальная площадка огорожена.</p>}
-      <RoutePlayer result={result} cursor={visibleCursor} playing={playing} speed={speed} onSpeed={setSpeed} onPlay={play}
+      <RoutePlayer result={result} cursor={visibleCursor} playing={playing} speed={speed} onSpeed={setSpeed} onPlay={play} rulesVersion={displayRulesVersion}
         onStep={() => { setPlaying(false); setCursor((step) => Math.min(step + 1, result?.steps ?? 0)); }}
         onRewind={() => { setPlaying(false); setCursor(0); }} onFinish={() => { setPlaying(false); setCursor(result?.steps ?? 0); }} />
-      {viewed && section !== 'lab' && <Conditions environment={environment} config={displayConfig} />}
+      {viewed && section !== 'lab' && <Conditions environment={environment} config={displayConfig} rulesVersion={displayRulesVersion} />}
     </Panel>
-    <ResultsPanel environment={environment} result={result} maxSteps={displayConfig.maxSteps} caption={viewed ? 'Результат этого сохранённого пути' : undefined} />
+    <ResultsPanel environment={environment} result={result} maxSteps={displayConfig.maxSteps} rulesVersion={displayRulesVersion} caption={viewed ? 'Результат этого сохранённого пути' : undefined} />
   </section>;
   const comparison = pair?.first ? <ExperimentComparison first={pair.first} second={pair.second}
     onViewFirst={() => showExperience(pair.first!)} onViewSecond={() => pair.second && showExperience(pair.second)}
@@ -269,6 +293,13 @@ export function App() {
     {isTrap || viewed ? <GuideCard stepIndex={guideSteps[guide.step]} title="Знакомство на паузе" onExit={skipOnboarding}>
       <p>{viewed ? 'Сейчас открыт сохранённый опыт. Чтобы продолжить подсказки, нажми «К текущему опыту». Записи и настройки сохранятся.' : 'Практические подсказки относятся к «Дороге домой». Твои опыты и выбранный бонус остаются сохранёнными.'}</p>
       {!viewed && <button type="button" className="text-button" onClick={() => switchMission('home')}>Открыть «Дорогу домой»</button>}
+    </GuideCard> : archiveGuidePaused ? <GuideCard stepIndex={guideSteps[guide.step]} title="Прогресс знакомства сохранён" onExit={skipOnboarding}>
+      <div data-testid="onboarding-legacy-pause"><p>Твой прежний опыт по правилам v1 сохранён в архиве. Шаг знакомства остался прежним. Новые правила требуют новой модели: архивный результат не пересчитывается.</p>
+        <p>Можно посмотреть прежний путь или продолжить знакомство с новой тренировкой по правилам v2.</p></div>
+      <div className="onboarding-actions">
+        <PixelButton onClick={continueOnboardingWithNewTraining}>Продолжить с новой тренировкой</PixelButton>
+        {legacyLesson?.home && <button type="button" className="text-button" onClick={() => showLegacyExperience(legacyLesson.home!)}>Посмотреть прежний опыт</button>}
+      </div>
     </GuideCard> : <GuideCard stepIndex={guideSteps[guide.step]} title={guideTitles[guide.step]} onExit={skipOnboarding}
       onContinue={['ground', 'prediction', 'observation'].includes(guide.step) || guide.step === 'question' && quizAnswer !== null ? nextGuideStep : undefined}
       continueLabel={guide.step === 'ground' ? 'К прогнозу' : guide.step === 'prediction' ? 'К тренировке' : guide.step === 'observation' ? 'К короткому вопросу' : 'Дальше'}>
@@ -301,7 +332,7 @@ export function App() {
       </>}
       {guide.step === 'question' && <>
         <div className="onboarding-quiz" role="group" aria-label="Варианты ответа">{['Готовый маршрут до домика', 'Оценки действий, по которым программа выбирает путь', 'Расположение ограждений'].map((answer, index) => <button key={answer} type="button" aria-pressed={quizAnswer === index} onClick={() => setQuizAnswer(index)}>{answer}</button>)}</div>
-        {quizAnswer !== null && <div className="onboarding-feedback" role="status"><p>{quizAnswer === 1 ? 'Да, меняются оценки действий.' : 'Меняются оценки действий, а не готовый маршрут или площадка.'} После своего шага программа использует награду, чтобы обновить число для клетки и направления. На проверке эти числа помогают выбрать действие.</p><p>{quizAnswer !== 1 ? 'Можно выбрать другой вариант или продолжить после объяснения.' : 'Следующий эксперимент поможет исследовать, к чему приводят другие награды.'}</p></div>}
+        {quizAnswer !== null && <div className="onboarding-feedback" role="status"><p>{quizAnswer === 1 ? 'Да, меняются оценки действий.' : 'Меняются оценки действий, а не готовый маршрут или площадка.'} После своего шага программа использует награду, чтобы обновить число для состояния и направления. Состояние учитывает клетку и сбор лакомства. На проверке эти числа помогают выбрать действие.</p><p>{quizAnswer !== 1 ? 'Можно выбрать другой вариант или продолжить после объяснения.' : 'Следующий эксперимент поможет исследовать, к чему приводят другие награды.'}</p></div>}
       </>}
       {guide.step === 'finish' && <>
         <p>Первый опыт готов. Дальше ты сможешь изменить награду за лакомство и исследовать, как изменится поведение таксы.</p>
@@ -319,6 +350,8 @@ export function App() {
     </aside>
     <div className="workspace"><header className="workspace-header"><span>Игровая лаборатория машинного обучения</span><p className="storage-status" data-testid="storage-status">{storageWarning ? 'Сохранение требует внимания' : storageSaved ? 'Занятие сохранено в этом браузере.' : 'Сохраняем только последнее занятие.'}</p></header>
       {storageWarning && <p className="storage-warning" role="alert" data-testid="storage-warning">{storageWarning}</p>}
+      {legacyInitial.warning && <p className="storage-warning" role="alert">{legacyInitial.warning}</p>}
+      {legacyLesson && <p className="saved-pair-note" data-testid="legacy-notice">Прежнее занятие сохранено в «Моих опытах» как архив правил v1. Новые тренировки используют правила v2: одно лакомство за попытку. Архив не пересчитан и не смешивается с новыми опытами.</p>}
       {onboardingIssue && <p className="storage-warning" data-testid="onboarding-storage-warning">{onboardingIssue === 'invalid' ? 'Сведения о знакомстве повреждены или имеют другую версию. Его можно пройти заново; занятие хранится отдельно.' : 'Не удалось сохранить состояние знакомства на устройстве. Подсказки работают в этой вкладке, но после перезагрузки могут появиться снова.'}</p>}
       {busy && (section !== 'lab' || viewed || showWelcome) && <div className="background-operation" role="status">{lab.status === 'training' ? 'Текущая тренировка продолжается' : 'Текущая проверка продолжается'}<button type="button" className="text-button" onClick={stop}>Остановить {lab.status === 'training' ? 'тренировку' : 'проверку'}</button></div>}
       {guiding && section !== 'lab' && <div className="onboarding-resume"><span>Подсказки знакомства ждут в лаборатории.</span><button type="button" className="text-button" onClick={() => switchSection('lab')}>Продолжить знакомство</button><button type="button" className="text-button" onClick={skipOnboarding}>Выйти из знакомства</button></div>}
@@ -327,7 +360,7 @@ export function App() {
         {section === 'lab' && !showWelcome && <>
           {guide.status === 'new' && existingLesson && <OnboardingInvite onStart={replayOnboarding} onSkip={skipOnboarding} />}
           <div className="mission-topbar"><nav className="mission-switch" aria-label="Миссии"><button type="button" aria-pressed={!displayIsTrap} disabled={!!viewed} onClick={() => switchMission('home')}>Дорога домой</button><button type="button" aria-pressed={displayIsTrap} disabled={!!viewed} onClick={() => switchMission('trap')}>Ловушка лакомства</button></nav><button type="button" className="text-button restart-button" disabled={!!viewed} onClick={restart}>Начать заново</button></div>
-          <div className="mission-heading"><div><p className="eyebrow">МИССИЯ {displayIsTrap ? '02 · ЭКСПЕРИМЕНТ С НАГРАДОЙ' : '01 · ПЕРВАЯ ПРОГУЛКА'}</p><h1 id="mission-title" tabIndex={-1}>{displayIsTrap ? 'Ловушка лакомства' : 'Дорога домой'}<span className="title-dot">.</span></h1><p className="mission-description">{viewed ? 'Сохранённый опыт: посмотри путь или дополни наблюдение. Условия этого опыта неизменны.' : isTrap ? 'Добраться домой или вернуться за лакомством? Измени бонус и сравни два пути.' : 'Помоги таксе научиться добираться до домика. Сначала предположи, потом проверь.'}</p></div></div>
+          <div className="mission-heading"><div><p className="eyebrow">МИССИЯ {displayIsTrap ? '02 · ЭКСПЕРИМЕНТ С НАГРАДОЙ' : '01 · ПЕРВАЯ ПРОГУЛКА'}</p><h1 id="mission-title" tabIndex={-1}>{displayIsTrap ? 'Ловушка лакомства' : 'Дорога домой'}<span className="title-dot">.</span></h1><p className="mission-description">{viewedLegacy ? 'Архив правил v1: исходный путь, очки и записи доступны для чтения. Новые правила к ним не применяются.' : viewed ? 'Сохранённый опыт: посмотри путь или дополни наблюдение. Условия этого опыта неизменны.' : isTrap ? 'Одно лакомство за прогулку. Измени бонус и сравни два опыта: путь может остаться прежним.' : 'Помоги таксе научиться добираться до домика. Сначала предположи, потом проверь.'}</p></div></div>
           {guideCard}
           {isTrap && !viewed && !guide.trapHintDismissed && <TrapHint onDismiss={() => guideDispatch({ type: 'DISMISS_TRAP_HINT' })} />}
           <ol className="lesson-steps" aria-label="Шаги занятия">{['Прогноз', 'Тренировка', 'Наблюдение', displayIsTrap ? 'Сравнение' : 'Вывод'].map((label, index) => <li key={label} aria-current={phase === index + 1 ? 'step' : undefined}><span>{index + 1}</span>{label}</li>)}</ol>
@@ -336,7 +369,7 @@ export function App() {
               <h2>{viewed ? 'Сохранённый опыт' : current ? 'Что получилось?' : busy ? 'Такса тренируется' : secondExpected ? 'Проверим новое ожидание' : 'Начни с предположения'}</h2>
               {current || viewed || lab.model ? <details className="forecast-summary" open={guideInLab && guide.step === 'prediction' || undefined}><summary>Твой прогноз</summary>{forecast}</details> : forecast}
               {displayIsTrap && <div className="bonus-field"><label htmlFor="treat-bonus">Бонус за лакомство</label><select id="treat-bonus" value={viewed ? environment.rewards.treat : bonus} disabled={!!viewed} onChange={(event) => changeBonus(Number(event.target.value))}>{Array.from({ length: 11 }, (_, value) => <option value={value} key={value}>+{value} очк.</option>)}</select></div>}
-              {shown && <div className={`observation-field${highlight('observation')}`}><label htmlFor="explanation">{shown.missionId === 'trap' ? 'Что делает такса? Опиши наблюдаемое поведение.' : 'Совпал ли путь с твоим прогнозом? Почему?'}</label><textarea id="explanation" rows={2} maxLength={1500} value={shown.notes.observation} aria-describedby={guideInLab && guide.step === 'observation' ? 'onboarding-instruction' : undefined} onChange={(event) => updateObservation(shown, event.target.value)} placeholder="Я заметил(а), что…" /><p className="field-hint">Наблюдение можно дописать позже. Условия и результат не меняются.</p></div>}
+              {shown && <div className={`observation-field${highlight('observation')}`}><label htmlFor="explanation">{shown.missionId === 'trap' ? 'Что делает такса? Опиши наблюдаемое поведение.' : 'Совпал ли путь с твоим прогнозом? Почему?'}</label><textarea id="explanation" rows={2} maxLength={1500} value={shown.notes.observation} readOnly={!!viewedLegacy} aria-describedby={guideInLab && guide.step === 'observation' ? 'onboarding-instruction' : undefined} onChange={(event) => updateObservation(shown, event.target.value)} placeholder="Я заметил(а), что…" /><p className="field-hint">{viewedLegacy ? 'Архивная запись доступна для чтения и не перезаписывается.' : 'Наблюдение можно дописать позже. Условия и результат не меняются.'}</p></div>}
               <div className={`main-actions${highlight('training')}${highlight('check')}`}>
                 {viewed ? <PixelButton onClick={returnToCurrent}>К текущему опыту</PixelButton>
                   : busy ? <PixelButton onClick={stop} secondary>Остановить {lab.status === 'training' ? 'тренировку' : 'проверку'}</PixelButton>
@@ -351,23 +384,27 @@ export function App() {
               {!viewed && <p className="attempt-count">Попытки: <b data-testid="episode-count">{completed} / {total}</b></p>}
               {pendingReplacement && isTrap && !viewed && <p className="next-step">Новая пара готова. Прежняя сохранена отдельно: замени её, когда будешь готов продолжить.</p>}
               <div className="reward-rules"><span>Шаг <b>{rewardText(environment.rewards.step)}</b></span><span>Домик <b>{rewardText(environment.rewards.home)}</b></span>{displayIsTrap && <span>Лакомство <b>{rewardText(environment.rewards.treat)}</b></span>}</div>
-              <p className="rule-note">{displayIsTrap ? 'Бонус за каждый вход, включая первый. ' : ''}Столкновение: ещё {rewardText(environment.rewards.collision)}.</p>
+              <p className="rule-note">{displayIsTrap ? viewedLegacy ? 'Архив v1: бонус начислялся при каждом входе. ' : 'Первый вход собирает лакомство, даже при бонусе 0. Повторные входы в этой попытке бонуса не дают. ' : ''}Столкновение: ещё {rewardText(environment.rewards.collision)}.</p>
 
             </Panel></section>
             {playground}
           </div>
           <div className="lab-details">
-              <Conditions environment={viewed ? environment : activeEnvironment} config={viewed ? displayConfig : config}>{!displayIsTrap && <><div className="seed-line"><label htmlFor="seed">Seed <span>начало случайности</span></label><input id="seed" value={viewed ? displayConfig.seed : seedText} inputMode="numeric" maxLength={32} disabled={busy || !!viewed} aria-invalid={!viewed && !seedValid} onChange={(event) => changeSeed(event.target.value)} /></div><p className={`field-hint ${!viewed && !seedValid ? 'error-text' : ''}`}>{viewed ? 'Seed сохранённого опыта. Его условия не меняются.' : seedValid ? 'Одинаковый seed повторяет тренировку.' : 'Введи целое число от 0 до 4 294 967 295.'}</p></>}</Conditions>
-              {displayIsTrap && !viewed && <details className="research-hint"><summary>Подсказка для исследования</summary><p>Сложи награды за два шага: уйти от лакомства и вернуться. При каком бонусе это выгодно? Домик заканчивает прогулку.</p></details>}
+              <Conditions environment={viewed ? environment : activeEnvironment} config={viewed ? displayConfig : config} rulesVersion={displayRulesVersion}>{!displayIsTrap && <><div className="seed-line"><label htmlFor="seed">Seed <span>начало случайности</span></label><input id="seed" value={viewed ? displayConfig.seed : seedText} inputMode="numeric" maxLength={32} disabled={busy || !!viewed} aria-invalid={!viewed && !seedValid} onChange={(event) => changeSeed(event.target.value)} /></div><p className={`field-hint ${!viewed && !seedValid ? 'error-text' : ''}`}>{viewed ? 'Seed сохранённого опыта. Его условия не меняются.' : seedValid ? 'Одинаковый seed повторяет тренировку.' : 'Введи целое число от 0 до 4 294 967 295.'}</p></>}</Conditions>
+              {displayIsTrap && !viewed && <details className="research-hint"><summary>Подсказка для исследования</summary><p>Сравни не только очки, но и клетки пути. Другой бонус может изменить оценки действий, даже если маршрут останется тем же. За уже собранное лакомство второй награды нет.</p></details>}
           </div>
           {isTrap && !viewed && lesson.savedPair && workingPair.first && lesson.savedPair.first.id !== workingPair.first.id && <p className="saved-pair-note">Предыдущая пара и её объяснение сохранены в «Моих опытах», пока ты не заменишь их новой парой.</p>}
-          {displayIsTrap && comparison}
+          {displayIsTrap && !viewedLegacy && comparison}
         </>}
         {section === 'experiments' && <>
           <div className="section-heading"><p className="eyebrow">ТВОИ НАБЛЮДЕНИЯ</p><h1>Мои опыты<span className="title-dot">.</span></h1><p>Последнее занятие в этом браузере. Можно вернуться к пути и дописать наблюдения.</p></div>
           {comparison}
           {lesson.home && <section className="home-record"><h2>Дорога домой</h2><p>{lesson.home.result.outcome === 'goal' ? 'Такса добралась домой.' : 'До домика не дошла.'} {lesson.home.result.reward} очк. · {lesson.home.result.steps} выполненных шагов</p><button type="button" className="text-button" onClick={() => showExperience(lesson.home!)}>Путь домой</button><details><summary>Записи и условия первой миссии</summary><p>Прогноз: {lesson.home.notes.prediction || 'Не записан.'}</p><label htmlFor="home-observation">Наблюдение первой миссии</label><textarea id="home-observation" rows={2} maxLength={1500} value={lesson.home.notes.observation} onChange={(event) => updateObservation(lesson.home!, event.target.value)} /><Conditions environment={lesson.home.model.environment} config={lesson.home.model.config} /></details></section>}
-          {!pair?.first && !lesson.home && <div className="empty-state"><img src={dog} alt="Пиксельная такса" /><h2>Здесь будут твои опыты</h2><p>Заверши тренировку и посмотри путь. Результат сохранится автоматически.</p><PixelButton onClick={() => switchSection('lab')}>Открыть лабораторию</PixelButton></div>}
+          {legacyLesson && <section className="legacy-archive" aria-labelledby="legacy-title" data-testid="legacy-archive"><h2 id="legacy-title">Архив · правила v1</h2><p className="section-copy">Изначальное занятие сохранено без пересчёта. В нём лакомство было повторяемым, а Q-таблица учитывала только клетку. Эти результаты нельзя сравнивать с правилами v2 как изменение одного бонуса.</p>
+            {legacyRecords.map((record, index) => <article className="home-record" key={record.id} data-testid={`legacy-experience-${index + 1}`}><h3>{record.missionId === 'home' ? 'Дорога домой' : `Лакомство: бонус +${record.model.environment.rewards.treat}`} · v1</h3><p>{record.result.outcome === 'goal' ? 'Домик достигнут' : 'До домика не дошла'} · {record.result.reward} очк. · {record.result.steps} выполненных шагов</p><button type="button" className="text-button" onClick={() => showLegacyExperience(record)}>Путь архива {index + 1}</button><details><summary>Исходные записи и условия</summary><p>Прогноз: {record.notes.prediction || 'Не записан.'}</p><p>Наблюдение: {record.notes.observation || 'Не записано.'}</p><Conditions environment={record.model.environment} config={record.model.config} rulesVersion={LEGACY_RULES_VERSION} /></details></article>)}
+            <details><summary>Прежние черновики и объяснения</summary><p>Дорога домой — прогноз: {legacyLesson.drafts.home.prediction || 'Не записан.'}</p><p>Наблюдение: {legacyLesson.drafts.home.observation || 'Не записано.'}</p><p>Лакомство — прогноз: {legacyLesson.drafts.trap.prediction || 'Не записан.'}</p><p>Наблюдение: {legacyLesson.drafts.trap.observation || 'Не записано.'}</p><p>Объяснение рабочей пары: {legacyLesson.working.explanation || 'Не записано.'}</p><p>Объяснение сохранённой пары: {legacyLesson.savedPair?.explanation || 'Не записано.'}</p></details>
+          </section>}
+          {!pair?.first && !lesson.home && !legacyLesson && <div className="empty-state"><img src={dog} alt="Пиксельная такса" /><h2>Здесь будут твои опыты</h2><p>Заверши тренировку и посмотри путь. Результат сохранится автоматически.</p><PixelButton onClick={() => switchSection('lab')}>Открыть лабораторию</PixelButton></div>}
           {viewed && playground}
         </>}
         {section === 'guide' && <LearningGuide onRestart={replayOnboarding} />}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluate } from '../evaluation/evaluate';
-import { DEFAULT_TRAINING, HOME_ENVIRONMENT } from '../missions';
+import { DEFAULT_TRAINING, HOME_ENVIRONMENT, TRAP_ENVIRONMENT, TRAP_TRAINING } from '../missions';
+import { RULES_VERSION, STATE_ENCODING_VERSION } from '../domain/state';
 import { seededRandom } from './random';
 import { train, trainEpisodes } from './train';
 
@@ -20,6 +21,38 @@ describe('Воспроизводимое настоящее обучение', (
     expect(first.updates).toBe(first.metrics.reduce((sum, episode) => sum + episode.steps, 0));
     expect(first.q.flat().some((value) => value !== 0)).toBe(true);
     expect(evaluate(first.environment, first.q, 100)).toEqual(evaluate(second.environment, second.q, 100));
+  });
+
+  it.each([0, 42])('вторая миссия воспроизводит Q, метрики и сбор лакомства при seed %s', (seed) => {
+    const config = { ...TRAP_TRAINING, seed };
+    const first = train(TRAP_ENVIRONMENT, config);
+    const second = train(TRAP_ENVIRONMENT, config);
+    expect(first.q).toHaveLength(72);
+    expect(second.q).toEqual(first.q);
+    expect(second.metrics).toEqual(first.metrics);
+    expect(second.updates).toBe(first.updates);
+    const firstCheck = evaluate(first.environment, first.q, config.maxSteps);
+    const secondCheck = evaluate(second.environment, second.q, config.maxSteps);
+    expect(secondCheck).toEqual(firstCheck);
+    expect(firstCheck).toMatchObject({ outcome: 'goal', treatCollections: 1 });
+    expect(firstCheck.states[0].treatCollected).toBe(false);
+    expect(firstCheck.states.slice(1).every((state) => state.treatCollected)).toBe(true);
+    // Сравниваем реально обученные строки после сбора, а не только нулевую половину.
+    expect(first.q.slice(36).some((row) => row.some((value) => value !== 0))).toBe(true);
+  });
+
+  it('фиксирует версии правил и состояния в каждой новой модели', () => {
+    const result = train(TRAP_ENVIRONMENT, { ...TRAP_TRAINING, episodes: 1 });
+    expect(result).toMatchObject({ rulesVersion: RULES_VERSION, stateEncodingVersion: STATE_ENCODING_VERSION, algorithmVersion: 'tabular-q-learning-v2' });
+    expect(result.q).toHaveLength(72);
+  });
+
+  it('каждая тренировочная попытка заново может собрать лакомство', () => {
+    // Seed 14 при полном исследовании дважды выбирает вправо, по одному шагу за попытку.
+    const result = train(TRAP_ENVIRONMENT, { ...TRAP_TRAINING, episodes: 2, maxSteps: 1, seed: 14, epsilonStart: 1, epsilonEnd: 1 });
+    expect(result.metrics.map((metric) => metric.reward)).toEqual([4, 4]);
+    expect(result.metrics.map((metric) => metric.outcome)).toEqual(['timeout', 'timeout']);
+    expect(result.q[0][1]).toBeCloseTo(1.44);
   });
 
   it('timeout сохраняет bootstrap; следующая попытка отдельно начинается со старта', () => {
@@ -76,7 +109,7 @@ describe('Воспроизводимое настоящее обучение', (
     expect(next.value).toEqual(expected);
   });
 
-  it.each([1, 7, 42, 2026, 65535])('отдельное обучение seed %s достигает домика на подготовленной площадке', (seed) => {
+  it.each([0, 1, 7, 42, 2026, 65535])('отдельное обучение seed %s достигает домика на подготовленной площадке', (seed) => {
     const result = train(HOME_ENVIRONMENT, { ...DEFAULT_TRAINING, seed });
     const checked = evaluate(result.environment, result.q, DEFAULT_TRAINING.maxSteps);
     expect(checked.outcome).toBe('goal');

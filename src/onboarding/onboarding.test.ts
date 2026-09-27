@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   emptyOnboarding,
+  isOnboardingArchivePaused,
   loadOnboarding,
   MAX_ONBOARDING_STORAGE_LENGTH,
   ONBOARDING_STORAGE_KEY,
@@ -101,6 +102,43 @@ describe('знакомство следует реальному экспери�
       const restored = loadOnboarding(storage).state;
       expect(reconcileOnboarding(restored, idle).step).toBe('training');
     }
+  });
+
+  it.each(['observation', 'question', 'finish'] as const)('архив v1 сохраняет поздний шаг %s без выдачи старого результата за новый', (step) => {
+    const previous = at(step);
+    const raw = JSON.stringify(previous);
+    const storage = memoryStorage(raw);
+    const restored = loadOnboarding(storage).state;
+    const archived = { ...idle, hasArchivedHome: true };
+    expect(isOnboardingArchivePaused(restored, archived)).toBe(true);
+    expect(reconcileOnboarding(restored, archived)).toBe(restored);
+    expect(onboardingReducer(restored, { type: 'SYNC', context: archived })).toBe(restored);
+    expect(onboardingReducer(restored, { type: 'NEXT', context: archived, answered: true })).toBe(restored);
+    // Просмотр и возврат не подменяют Q-таблицу и не сбрасывают знакомство.
+    expect(reconcileOnboarding(restored, { ...archived, viewingSaved: true })).toBe(restored);
+    expect(reconcileOnboarding(restored, archived)).toEqual(previous);
+    expect(storage.entries.get(ONBOARDING_STORAGE_KEY)).toBe(raw);
+    expect(storage.setItem).not.toHaveBeenCalled();
+    // Только явный выбор разрешает перейти к повторному настоящему обучению.
+    const continued = onboardingReducer(restored, { type: 'CONTINUE_WITH_NEW_TRAINING', context: archived });
+    expect(continued).toEqual(at('training'));
+    expect(isOnboardingArchivePaused(continued, archived)).toBe(false);
+    expect(reconcileOnboarding(continued, archived)).toBe(continued);
+    expect(reconcileOnboarding(continued, { ...trained, hasArchivedHome: true }).step).toBe('check');
+    expect(reconcileOnboarding(at('check'), { ...ready, hasArchivedHome: true }).step).toBe('observation');
+  });
+
+  it('архив не блокирует обычное знакомство, новый опыт и восстановление прерванного Worker', () => {
+    for (const step of ['ground', 'prediction', 'training', 'check'] as const) {
+      const state = at(step);
+      expect(isOnboardingArchivePaused(state, { ...idle, hasArchivedHome: true })).toBe(false);
+      expect(reconcileOnboarding(state, { ...idle, hasArchivedHome: true })).toEqual(reconcileOnboarding(state, idle));
+    }
+    expect(isOnboardingArchivePaused(at('observation'), ready)).toBe(false);
+    expect(isOnboardingArchivePaused(at('observation'), { ...ready, hasArchivedHome: true })).toBe(false);
+    expect(isOnboardingArchivePaused(at('observation'), { ...idle, hasArchivedHome: true, status: 'training' })).toBe(false);
+    const normal = at('question');
+    expect(onboardingReducer(normal, { type: 'CONTINUE_WITH_NEW_TRAINING', context: idle })).toBe(normal);
   });
 
   it('после восстановления модели без результата просит проверку, а с результатом — наблюдение', () => {

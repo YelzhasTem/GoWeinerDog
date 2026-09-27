@@ -77,6 +77,8 @@ describe('Снимки двух опытов в памяти', () => {
     ['очки', (result: EvaluationResult) => { result.reward += 1; }],
     ['шаги', (result: EvaluationResult) => { result.steps -= 1; }],
     ['входы к лакомству', (result: EvaluationResult) => { result.treatEntries += 1; }],
+    ['полученные лакомства', (result: EvaluationResult) => { result.treatCollections += 1; }],
+    ['состояние лакомства на шаге', (result: EvaluationResult) => { result.states[1].treatCollected = false; }],
     ['причина окончания', (result: EvaluationResult) => { result.outcome = result.outcome === 'goal' ? 'timeout' : 'goal'; }],
     ['позиция на пути', (result: EvaluationResult) => { result.positions[1] = 35; }],
     ['состав награды', (result: EvaluationResult) => { result.transitions[0].rewardParts.treat += 1; }],
@@ -96,7 +98,9 @@ describe('Одно изменённое условие в сравниваемо
       differences: [{ key: 'bonus', label: 'Бонус за лакомство', before: 5, after: 1 }],
     });
     expect(first.model.q).not.toEqual(second.model.q);
-    expect(first.result.outcome).toBe('timeout');
+    expect(first.result.outcome).toBe('goal');
+    expect(first.result.positions).toEqual(second.result.positions);
+    expect(first.result.treatCollections).toBe(1);
     expect(second.result.outcome).toBe('goal');
   });
 

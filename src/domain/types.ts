@@ -31,7 +31,13 @@ export interface TrainingConfig {
   seed: number;
 }
 
-export interface Transition {
+export interface AgentState {
+  cell: number;
+  treatCollected: boolean;
+}
+
+/** Общие поля сохранённого перехода, включая архив старых правил. */
+export interface TransitionRecord {
   from: number;
   to: number;
   action: Action;
@@ -41,6 +47,15 @@ export interface Transition {
   enteredTreat: boolean;
   terminated: boolean;
   rewardParts: Rewards;
+  collectedTreat?: boolean;
+}
+
+export interface Transition extends TransitionRecord {
+  fromState: number;
+  toState: number;
+  before: AgentState;
+  after: AgentState;
+  collectedTreat: boolean;
 }
 
 export type QTable = number[][];
@@ -62,7 +77,7 @@ export interface TrainingProgress {
   updates: number;
 }
 
-export interface TrainingResult {
+export interface TrainingRecord {
   q: QTable;
   config: TrainingConfig;
   environment: EnvironmentConfig;
@@ -70,14 +85,28 @@ export interface TrainingResult {
   updates: number;
   algorithmVersion: string;
   prngVersion: string;
+  rulesVersion?: string;
+  stateEncodingVersion?: string;
 }
 
-export interface EvaluationResult {
-  transitions: Transition[];
+export interface TrainingResult extends TrainingRecord {
+  rulesVersion: 'treat-once-v2';
+  stateEncodingVersion: 'cell-treat-v2';
+}
+
+export interface EvaluationRecord {
+  transitions: TransitionRecord[];
   positions: number[];
   reward: number;
   steps: number;
   outcome: Outcome;
   treatEntries: number;
   collisions: number;
+  treatCollections?: number;
+}
+
+export interface EvaluationResult extends EvaluationRecord {
+  transitions: Transition[];
+  states: AgentState[];
+  treatCollections: number;
 }

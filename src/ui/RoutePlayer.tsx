@@ -1,8 +1,9 @@
-import type { EvaluationResult } from '../domain/types';
+import type { EvaluationRecord } from '../domain/types';
 import { ACTION_NAMES } from '../domain/types';
 
 interface Props {
-  result: EvaluationResult | null;
+  result: EvaluationRecord | null;
+  rulesVersion?: string;
   cursor: number;
   playing: boolean;
   onPlay: () => void;
@@ -13,8 +14,12 @@ interface Props {
   onSpeed?: (value: number) => void;
 }
 
-export function RoutePlayer({ result, cursor, playing, onPlay, onStep, onRewind, onFinish, speed = 1, onSpeed }: Props) {
+export function RoutePlayer({ result, cursor, playing, onPlay, onStep, onRewind, onFinish, speed = 1, onSpeed, rulesVersion = 'treat-once-v2' }: Props) {
   const last = result && cursor > 0 ? result.transitions[cursor - 1] : null;
+  const treatNote = last?.enteredTreat
+    ? rulesVersion === 'repeat-treat-v1' ? ' Получено лакомство по архивным правилам v1.'
+      : last.collectedTreat ? ' Лакомство собрано.' : ' Повторный вход: лакомство уже собрано, нового бонуса нет.'
+    : '';
   return <div className="route-player">
     <div className="player-caption">
       <span>{result ? 'Рассчитанный путь' : 'Здесь появится путь таксы'}</span>
@@ -35,7 +40,7 @@ export function RoutePlayer({ result, cursor, playing, onPlay, onStep, onRewind,
     </label>}
     <p className="player-note" data-testid="transition-note">
       {!result ? 'Сначала тренировка, затем проверка без случайных действий.' : last
-        ? `Шаг ${cursor}: ${ACTION_NAMES[last.action]}${last.collision ? ', столкновение' : ''}. Награда: ${last.reward > 0 ? '+' : ''}${last.reward}.`
+        ? `Шаг ${cursor}: ${ACTION_NAMES[last.action]}${last.collision ? ', столкновение' : ''}. Награда: ${last.reward > 0 ? '+' : ''}${last.reward}.${treatNote}`
         : 'Такса на старте. Проигрываем уже рассчитанные действия.'}
     </p>
   </div>;

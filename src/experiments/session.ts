@@ -1,4 +1,6 @@
-import type { EvaluationResult, TrainingResult } from '../domain/types';
+import type { EvaluationResult, TrainingRecord, TrainingResult } from '../domain/types';
+import { RULES_VERSION, STATE_ENCODING_VERSION } from '../domain/state';
+import { LEGACY_RULES_VERSION, LEGACY_STATE_ENCODING_VERSION } from './legacy';
 import { validateTrainingConfig } from '../domain/validation';
 import { evaluate } from '../evaluation/evaluate';
 
@@ -59,6 +61,9 @@ export function captureExperiment(
   notes: ExperimentNotes,
   evaluationMaxSteps = model.config.maxSteps,
 ): ExperimentSnapshot {
+  if (model.rulesVersion !== RULES_VERSION || model.stateEncodingVersion !== STATE_ENCODING_VERSION) {
+    throw new Error('Старый опыт сохраняется в архиве своей версии правил и не становится новым опытом.');
+  }
   const errors = validateTrainingConfig(model.config);
   if (errors.length > 0) throw new Error(errors.join(' '));
   if (model.metrics.length !== model.config.episodes
@@ -77,15 +82,23 @@ export function captureExperiment(
   return freezeDeep(structuredClone({ id, missionId: 'trap' as const, model, result, notes, evaluationMaxSteps }));
 }
 
+interface ComparisonSnapshot {
+  readonly missionId: 'home' | 'trap';
+  readonly model: TrainingRecord;
+  readonly evaluationMaxSteps: number;
+}
+
 interface Condition {
   key: string;
   label: string;
-  read: (snapshot: ExperimentSnapshot) => ConditionValue;
+  read: (snapshot: ComparisonSnapshot) => ConditionValue;
 }
 
 // Сравниваем условия, а не Q: изменение Q и пути как раз и есть результат опыта.
 const CONDITIONS: readonly Condition[] = [
   { key: 'missionId', label: 'Миссия', read: (s) => s.missionId },
+  { key: 'rulesVersion', label: 'Версия правил', read: (s) => s.model.rulesVersion ?? LEGACY_RULES_VERSION },
+  { key: 'stateEncodingVersion', label: 'Формат состояния', read: (s) => s.model.stateEncodingVersion ?? LEGACY_STATE_ENCODING_VERSION },
   { key: 'width', label: 'Ширина площадки', read: (s) => s.model.environment.width },
   { key: 'height', label: 'Высота площадки', read: (s) => s.model.environment.height },
   { key: 'start', label: 'Место начала прогулки', read: (s) => s.model.environment.start },
@@ -109,7 +122,7 @@ const CONDITIONS: readonly Condition[] = [
   { key: 'prngVersion', label: 'Версия случайной последовательности', read: (s) => s.model.prngVersion },
 ];
 
-export function compareExperiments(first: ExperimentSnapshot, second: ExperimentSnapshot): ExperimentComparison {
+export function compareExperiments(first: ComparisonSnapshot, second: ComparisonSnapshot): ExperimentComparison {
   const differences: ConditionDifference[] = [];
   for (const condition of CONDITIONS) {
     const before = condition.read(first);
