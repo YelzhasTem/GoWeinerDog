@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './helpers';
 
 const STORAGE_KEY = 'goweinerdog.lesson.v1';
 const firstPrediction = 'Лакомство может заставить таксу возвращаться за очками.';
@@ -371,6 +372,7 @@ for (const fault of ['corrupt-json', 'unknown-version', 'storage-getter', 'quota
       if (scenario === 'storage-getter') {
         Object.defineProperty(window, 'localStorage', { configurable: true, get: () => { throw new DOMException('Storage is disabled', 'SecurityError'); } });
       } else if (scenario === 'quota') {
+        localStorage.setItem('goweinerdog.onboarding.v1', JSON.stringify({ version: 1, status: 'skipped', step: 'welcome', trapHintDismissed: true }));
         Storage.prototype.setItem = function () { throw new DOMException('Storage quota exceeded', 'QuotaExceededError'); };
       } else {
         const futureLesson = {
@@ -387,6 +389,7 @@ for (const fault of ['corrupt-json', 'unknown-version', 'storage-getter', 'quota
     }, { key: STORAGE_KEY, scenario: fault });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
+    if (fault === 'storage-getter') await page.getByRole('button', { name: 'Сразу в лабораторию', exact: true }).click();
     if (fault === 'quota') await page.locator('#prediction').fill('Запись не должна мешать работе в памяти.');
     await expect(page.getByTestId('storage-warning')).toBeVisible();
     await expect(page.getByTestId('storage-warning')).toHaveAttribute('role', 'alert');

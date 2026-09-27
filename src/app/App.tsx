@@ -1,7 +1,8 @@
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { createLabController } from './labController';
 import { DEFAULT_TRAINING, HOME_ENVIRONMENT, TRAP_ENVIRONMENT, TRAP_TRAINING } from '../missions';
-import { canStartTrap, captureLessonExperience, lessonReducer, loadLesson, saveLesson, type Experience, type Mission } from '../experiments/lesson';
+import { canStartTrap, captureLessonExperience, emptyLesson, lessonReducer, loadLesson, saveLesson, type Experience, type Mission } from '../experiments/lesson';
+import { loadOnboarding, onboardingReducer, reconcileOnboarding, saveOnboarding, type OnboardingContext } from '../onboarding/onboarding';
 import type { EnvironmentConfig, TrainingConfig } from '../domain/types';
 import { Panel, PixelButton } from '../ui/controls';
 import { TrainingGround } from '../ui/TrainingGround';
@@ -9,6 +10,7 @@ import { RoutePlayer } from '../ui/RoutePlayer';
 import { ResultsPanel } from '../ui/ResultsPanel';
 import { ExperimentComparison } from '../ui/ExperimentComparison';
 import { LearningGuide } from '../ui/LearningGuide';
+import { GuideCard, OnboardingInvite, TrapHint, Welcome } from '../ui/Onboarding';
 import dog from '../assets/pixel/dachshund.svg';
 import home from '../assets/pixel/home.svg';
 import fence from '../assets/pixel/fence.svg';
@@ -35,6 +37,12 @@ function Conditions({ environment, config, children }: { environment: Environmen
 export function App() {
   const [initial] = useState(() => loadLesson());
   const [lesson, dispatch] = useReducer(lessonReducer, initial.state);
+  const [onboardingInitial] = useState(() => loadOnboarding());
+  const [onboarding, guideDispatch] = useReducer(onboardingReducer, onboardingInitial.state);
+  const [onboardingIssue, setOnboardingIssue] = useState(onboardingInitial.issue);
+  const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
+  const onboardingWritten = useRef(onboarding);
+  const [existingLesson] = useState(() => JSON.stringify(initial.state) !== JSON.stringify(emptyLesson()));
   const [controller] = useState(() => createLabController());
   const lab = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [section, setSection] = useState<Section>('lab');
@@ -77,6 +85,28 @@ export function App() {
   const pairScope = showSavedPair ? 'saved' : 'working';
   const secondExpected = isTrap && !!workingPair.first && current?.id !== workingPair.first.id;
   const phase = viewed ? 3 : busy || (lab.model && !lab.evaluation && !current) ? 2 : current ? isTrap && workingPair.second ? 4 : 3 : 1;
+  // Подсказки читают тот же расчёт, что и лаборатория. Сохранённый просмотр
+  // приостанавливает знакомство, а незавершённый Worker не даёт перейти дальше.
+  const currentBelongsToRun = current && (!training.current || current.id === training.current.id);
+  const guideContext: OnboardingContext = {
+    mission: lesson.mission, viewingSaved: !!viewed, status: lab.status,
+    hasModel: lab.status !== 'training' && Boolean(lab.model || currentBelongsToRun),
+    hasResult: !busy && Boolean(currentBelongsToRun || lab.evaluation),
+  };
+  const guide = reconcileOnboarding(onboarding, guideContext);
+  const showWelcome = section === 'lab' && (guide.status === 'new' && !existingLesson || guide.status === 'in-progress' && guide.step === 'welcome');
+  const guiding = guide.status === 'in-progress' && guide.step !== 'welcome';
+  const guideInLab = guiding && section === 'lab' && !isTrap && !viewed;
+  const highlight = (step: string) => guideInLab && guide.step === step ? ' onboarding-target' : '';
+
+  useEffect(() => {
+    guideDispatch({ type: 'SYNC', context: guideContext });
+  }, [lesson.mission, !!viewed, guideContext.hasModel, guideContext.hasResult, lab.status]);
+  useEffect(() => {
+    if (onboardingWritten.current === onboarding) return;
+    onboardingWritten.current = onboarding;
+    setOnboardingIssue(saveOnboarding(onboarding).issue);
+  }, [onboarding]);
 
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => { document.title = `GoWeinerDog — ${sectionNames[section]}`; }, [section]);
@@ -157,7 +187,7 @@ export function App() {
     setViewingId(null); setCursor(0);
     if (current || lab.evaluation) setPlaying(!reducedMotion);
     else controller.evaluate();
-    document.getElementById('ground-title')?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' });
+    if (!guideInLab) document.getElementById('ground-title')?.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' });
   }
   function showExperience(experience: Experience) {
     setViewingId(experience.id); setPlaying(false); setCursor(0);
@@ -165,6 +195,29 @@ export function App() {
   }
   function returnToCurrent() { setViewingId(null); setPlaying(false); }
   function switchSection(next: Section) { setSection(next); setPlaying(false); }
+  function focusLaboratory() {
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById('mission-title') ?? document.querySelector<HTMLElement>('.section-nav [aria-current="page"]');
+      target?.focus();
+    });
+  }
+  function skipOnboarding() {
+    guideDispatch({ type: 'SKIP' });
+    focusLaboratory();
+  }
+  function replayOnboarding() {
+    guideDispatch({ type: 'RESTART' });
+    setQuizAnswer(null); setSection('lab'); setPlaying(false);
+  }
+  function nextGuideStep() {
+    guideDispatch({ type: 'NEXT', context: guideContext, answered: quizAnswer !== null });
+    if (guide.step === 'ground') window.requestAnimationFrame(() => document.getElementById('prediction')?.focus());
+  }
+  function finishOnboarding(toTrap: boolean) {
+    guideDispatch({ type: 'FINISH' });
+    if (toTrap) switchMission('trap');
+    focusLaboratory();
+  }
   function restart() {
     resetOperation(); dispatch({ type: 'restart' }); setSection('lab');
     setNotice('Начато новое занятие. Предыдущие результаты очищены.');
@@ -185,8 +238,8 @@ export function App() {
   if (viewed) status = `Сохранённый опыт: ${viewed.result.outcome === 'goal' ? 'такса добралась домой.' : 'лимит шагов, до домика не дошла.'}`;
 
   const predictionLabel = displayIsTrap ? !viewed && secondExpected ? 'Что изменится при новом бонусе?' : 'Как лакомство повлияет на путь таксы?' : 'Как такса найдёт дорогу домой?';
-  const forecast = <><label htmlFor="prediction">{predictionLabel}</label><textarea id="prediction" rows={2} maxLength={500} value={shown?.notes.prediction ?? draft.prediction} disabled={busy || !!lab.model || !!shown} placeholder="Думаю, такса…" onChange={(event) => dispatch({ type: 'draft', mission: lesson.mission, patch: { prediction: event.target.value } })} /><p className="field-hint">{shown || lab.model ? 'Прогноз записан до тренировки.' : 'Твоё предположение. Можно пропустить.'}</p></>;
-  const playground = <section className="stage-area" aria-labelledby="ground-title">
+  const forecast = <div className={highlight('prediction')}><label htmlFor="prediction">{predictionLabel}</label><textarea id="prediction" rows={2} maxLength={500} value={shown?.notes.prediction ?? draft.prediction} disabled={busy || !!lab.model || !!shown} aria-describedby={guideInLab && guide.step === 'prediction' ? 'onboarding-instruction' : undefined} placeholder="Думаю, такса…" onChange={(event) => dispatch({ type: 'draft', mission: lesson.mission, patch: { prediction: event.target.value } })} /><p className="field-hint">{shown || lab.model ? 'Прогноз записан до тренировки.' : 'Твоё предположение. Можно пропустить.'}</p></div>;
+  const playground = <section className={`stage-area${highlight('ground')}`} aria-labelledby="ground-title">
     <Panel className="stage-panel"><div className="panel-topline"><h2 id="ground-title">{environment.treat !== undefined ? 'Дорожка с лакомством' : 'Тренировочная площадка'}</h2><span className="small-tag">{result ? 'Проверка' : busy ? 'Тренировка' : 'Площадка'}</span></div>
       {viewed && <div className="saved-view-banner" data-testid="saved-view">Сохранённый путь · {viewed.missionId === 'trap' ? `бонус +${environment.rewards.treat}` : 'Дорога домой'}{section !== 'lab' && <button type="button" className="text-button" onClick={returnToCurrent}>К текущему опыту</button>}</div>}
       <TrainingGround environment={environment} evaluation={result} cursor={visibleCursor} compact={environment.treat !== undefined} />
@@ -205,6 +258,58 @@ export function App() {
     onObservation={(id, value) => dispatch({ type: 'observation', id, value })}
     title={pairScope === 'saved' ? 'Сохранённая пара' : 'Сравнение опытов'} /> : null;
 
+  const guideSteps = { welcome: 1, ground: 1, prediction: 2, training: 3, check: 4, observation: 5, question: 6, finish: 6 };
+  const guideTitles = {
+    welcome: 'Привет!', ground: 'Познакомься с площадкой', prediction: 'Сначала — твоя идея',
+    training: 'Пора учиться на опыте', check: 'Проверим выученный путь', observation: 'Что получилось на самом деле?',
+    question: 'Что изменяется во время тренировки?', finish: 'Первый опыт готов',
+  };
+  const coordinate = (cell: number) => `${Math.floor(cell / environment.width) + 1}:${cell % environment.width + 1}`;
+  const guideCard = guiding && <div data-onboarding-step={guide.step}>
+    {isTrap || viewed ? <GuideCard stepIndex={guideSteps[guide.step]} title="Знакомство на паузе" onExit={skipOnboarding}>
+      <p>{viewed ? 'Сейчас открыт сохранённый опыт. Чтобы продолжить подсказки, нажми «К текущему опыту». Записи и настройки сохранятся.' : 'Практические подсказки относятся к «Дороге домой». Твои опыты и выбранный бонус остаются сохранёнными.'}</p>
+      {!viewed && <button type="button" className="text-button" onClick={() => switchMission('home')}>Открыть «Дорогу домой»</button>}
+    </GuideCard> : <GuideCard stepIndex={guideSteps[guide.step]} title={guideTitles[guide.step]} onExit={skipOnboarding}
+      onContinue={['ground', 'prediction', 'observation'].includes(guide.step) || guide.step === 'question' && quizAnswer !== null ? nextGuideStep : undefined}
+      continueLabel={guide.step === 'ground' ? 'К прогнозу' : guide.step === 'prediction' ? 'К тренировке' : guide.step === 'observation' ? 'К короткому вопросу' : 'Дальше'}>
+      {guide.step === 'ground' && <>
+        <p>Твоя задача — помочь таксе добраться домой. Алгоритм учится выбирать действия по ожидаемым наградам.</p>
+        <p>Такса начинает в клетке <b>{coordinate(environment.start)}</b>, домик — <b>{coordinate(environment.home)}</b> (строка:столбец). Ограждения не дают пройти.</p>
+        <p>Каждый шаг: <b>{rewardText(environment.rewards.step)}</b> очк. Столкновение: ещё <b>{rewardText(environment.rewards.collision)}</b>. Домик: <b>{rewardText(environment.rewards.home)}</b> к награде за шаг.</p>
+        <p>Управлять таксой стрелками не нужно. Путь она выбирает по результатам обучения. Здесь награды уже настроены; менять бонус будем во второй миссии.</p>
+      </>}
+      {guide.step === 'prediction' && <>
+        <p>Как ты думаешь, что произойдёт после тренировки? Запиши предположение в выделенном поле, а затем сравни его с результатом.</p>
+        <p>{current || lab.model ? 'У этого опыта прогноз уже зафиксирован. Можно перечитать его и продолжить с имеющимся результатом.' : 'Можно продолжить без записи. Если прогноз не сбудется, это повод разобраться, а не ошибка.'}</p>
+      </>}
+      {guide.step === 'training' && <>
+        <p>Во время тренировки такса много раз пробует пройти площадку. После каждого шага программа обновляет оценки действий. Так она учится на полученных наградах.</p>
+        <p>{lab.status === 'training' ? `Идёт настоящий расчёт: ${completed} из ${total} попыток. Кнопка остановки доступна ниже.` : `Нажми «Начать тренировку». В этой миссии ${total} попыток — новых проб пройти площадку.`}</p>
+        {(lab.status === 'cancelled' || lab.status === 'error') && <p>Расчёт не завершён. Можно снова запустить тренировку; она начнётся с нуля.</p>}
+        {!seedValid && <p>Сначала исправь seed в «Подробнее об условиях»: нужно целое число от 0 до 4 294 967 295.</p>}
+        <p className="field-hint">Следующая подсказка появится только после завершения обучения.</p>
+      </>}
+      {guide.step === 'check' && <>
+        <p>Теперь проверим, чему такса научилась. Во время проверки она использует выученные оценки: случайных проб и нового обучения здесь нет.</p>
+        <p>{lab.status === 'evaluating' ? 'Worker рассчитывает путь. Проверку можно остановить.' : 'Нажми «Посмотреть путь». Затем можно поставить паузу, сделать один шаг, выбрать скорость или нажать «Сразу результат».'}</p>
+        {(lab.status === 'cancelled' || lab.status === 'error') && <p>Проверка не завершилась. Нажми «Посмотреть путь» ещё раз — выученная модель сохранена.</p>}
+      </>}
+      {guide.step === 'observation' && result && <>
+        <p data-testid="onboarding-outcome"><b>{result.outcome === 'goal' ? 'Такса добралась домой.' : 'До домика не дошла: закончился лимит шагов.'}</b> Выполнено шагов: {result.steps}. Очки: {format.format(result.reward)}.</p>
+        <p>Посмотри рассчитанный путь и сравни его со своим прогнозом. Что удивило? Запиши наблюдение в выделенном поле — или продолжи без записи.</p>
+        <p className="field-hint">Пауза, один шаг, скорость и «Сразу результат» доступны под площадкой.</p>
+      </>}
+      {guide.step === 'question' && <>
+        <div className="onboarding-quiz" role="group" aria-label="Варианты ответа">{['Готовый маршрут до домика', 'Оценки действий, по которым программа выбирает путь', 'Расположение ограждений'].map((answer, index) => <button key={answer} type="button" aria-pressed={quizAnswer === index} onClick={() => setQuizAnswer(index)}>{answer}</button>)}</div>
+        {quizAnswer !== null && <div className="onboarding-feedback" role="status"><p>{quizAnswer === 1 ? 'Да, меняются оценки действий.' : 'Меняются оценки действий, а не готовый маршрут или площадка.'} После своего шага программа использует награду, чтобы обновить число для клетки и направления. На проверке эти числа помогают выбрать действие.</p><p>{quizAnswer !== 1 ? 'Можно выбрать другой вариант или продолжить после объяснения.' : 'Следующий эксперимент поможет исследовать, к чему приводят другие награды.'}</p></div>}
+      </>}
+      {guide.step === 'finish' && <>
+        <p>Первый опыт готов. Дальше ты сможешь изменить награду за лакомство и исследовать, как изменится поведение таксы.</p>
+        <div className="onboarding-actions"><PixelButton onClick={() => finishOnboarding(true)}>К эксперименту с лакомством</PixelButton><button type="button" className="text-button" onClick={() => finishOnboarding(false)}>Остаться в лаборатории</button></div>
+      </>}
+    </GuideCard>}
+  </div>;
+
   return <div className="app-shell">
     <a href="#laboratory" className="skip-link">К лаборатории</a>
     <aside className="sidebar">
@@ -214,19 +319,25 @@ export function App() {
     </aside>
     <div className="workspace"><header className="workspace-header"><span>Игровая лаборатория машинного обучения</span><p className="storage-status" data-testid="storage-status">{storageWarning ? 'Сохранение требует внимания' : storageSaved ? 'Занятие сохранено в этом браузере.' : 'Сохраняем только последнее занятие.'}</p></header>
       {storageWarning && <p className="storage-warning" role="alert" data-testid="storage-warning">{storageWarning}</p>}
-      {busy && (section !== 'lab' || viewed) && <div className="background-operation" role="status">{lab.status === 'training' ? 'Текущая тренировка продолжается' : 'Текущая проверка продолжается'}<button type="button" className="text-button" onClick={stop}>Остановить {lab.status === 'training' ? 'тренировку' : 'проверку'}</button></div>}
+      {onboardingIssue && <p className="storage-warning" data-testid="onboarding-storage-warning">{onboardingIssue === 'invalid' ? 'Сведения о знакомстве повреждены или имеют другую версию. Его можно пройти заново; занятие хранится отдельно.' : 'Не удалось сохранить состояние знакомства на устройстве. Подсказки работают в этой вкладке, но после перезагрузки могут появиться снова.'}</p>}
+      {busy && (section !== 'lab' || viewed || showWelcome) && <div className="background-operation" role="status">{lab.status === 'training' ? 'Текущая тренировка продолжается' : 'Текущая проверка продолжается'}<button type="button" className="text-button" onClick={stop}>Остановить {lab.status === 'training' ? 'тренировку' : 'проверку'}</button></div>}
+      {guiding && section !== 'lab' && <div className="onboarding-resume"><span>Подсказки знакомства ждут в лаборатории.</span><button type="button" className="text-button" onClick={() => switchSection('lab')}>Продолжить знакомство</button><button type="button" className="text-button" onClick={skipOnboarding}>Выйти из знакомства</button></div>}
       <main id="laboratory">
-        {section === 'lab' && <>
+        {showWelcome && <Welcome onStart={() => guideDispatch({ type: 'BEGIN' })} onSkip={skipOnboarding} />}
+        {section === 'lab' && !showWelcome && <>
+          {guide.status === 'new' && existingLesson && <OnboardingInvite onStart={replayOnboarding} onSkip={skipOnboarding} />}
           <div className="mission-topbar"><nav className="mission-switch" aria-label="Миссии"><button type="button" aria-pressed={!displayIsTrap} disabled={!!viewed} onClick={() => switchMission('home')}>Дорога домой</button><button type="button" aria-pressed={displayIsTrap} disabled={!!viewed} onClick={() => switchMission('trap')}>Ловушка лакомства</button></nav><button type="button" className="text-button restart-button" disabled={!!viewed} onClick={restart}>Начать заново</button></div>
-          <div className="mission-heading"><div><p className="eyebrow">МИССИЯ {displayIsTrap ? '02 · ЭКСПЕРИМЕНТ С НАГРАДОЙ' : '01 · ПЕРВАЯ ПРОГУЛКА'}</p><h1>{displayIsTrap ? 'Ловушка лакомства' : 'Дорога домой'}<span className="title-dot">.</span></h1><p className="mission-description">{viewed ? 'Сохранённый опыт: посмотри путь или дополни наблюдение. Условия этого опыта неизменны.' : isTrap ? 'Добраться домой или вернуться за лакомством? Измени бонус и сравни два пути.' : 'Помоги таксе научиться добираться до домика. Сначала предположи, потом проверь.'}</p></div></div>
+          <div className="mission-heading"><div><p className="eyebrow">МИССИЯ {displayIsTrap ? '02 · ЭКСПЕРИМЕНТ С НАГРАДОЙ' : '01 · ПЕРВАЯ ПРОГУЛКА'}</p><h1 id="mission-title" tabIndex={-1}>{displayIsTrap ? 'Ловушка лакомства' : 'Дорога домой'}<span className="title-dot">.</span></h1><p className="mission-description">{viewed ? 'Сохранённый опыт: посмотри путь или дополни наблюдение. Условия этого опыта неизменны.' : isTrap ? 'Добраться домой или вернуться за лакомством? Измени бонус и сравни два пути.' : 'Помоги таксе научиться добираться до домика. Сначала предположи, потом проверь.'}</p></div></div>
+          {guideCard}
+          {isTrap && !viewed && !guide.trapHintDismissed && <TrapHint onDismiss={() => guideDispatch({ type: 'DISMISS_TRAP_HINT' })} />}
           <ol className="lesson-steps" aria-label="Шаги занятия">{['Прогноз', 'Тренировка', 'Наблюдение', displayIsTrap ? 'Сравнение' : 'Вывод'].map((label, index) => <li key={label} aria-current={phase === index + 1 ? 'step' : undefined}><span>{index + 1}</span>{label}</li>)}</ol>
           <div className="lab-layout">
             <section className="controls-area" aria-label="Действия эксперимента"><Panel className="action-panel">
               <h2>{viewed ? 'Сохранённый опыт' : current ? 'Что получилось?' : busy ? 'Такса тренируется' : secondExpected ? 'Проверим новое ожидание' : 'Начни с предположения'}</h2>
-              {current || viewed || lab.model ? <details className="forecast-summary"><summary>Твой прогноз</summary>{forecast}</details> : forecast}
+              {current || viewed || lab.model ? <details className="forecast-summary" open={guideInLab && guide.step === 'prediction' || undefined}><summary>Твой прогноз</summary>{forecast}</details> : forecast}
               {displayIsTrap && <div className="bonus-field"><label htmlFor="treat-bonus">Бонус за лакомство</label><select id="treat-bonus" value={viewed ? environment.rewards.treat : bonus} disabled={!!viewed} onChange={(event) => changeBonus(Number(event.target.value))}>{Array.from({ length: 11 }, (_, value) => <option value={value} key={value}>+{value} очк.</option>)}</select></div>}
-              {shown && <div className="observation-field"><label htmlFor="explanation">{shown.missionId === 'trap' ? 'Что делает такса? Опиши наблюдаемое поведение.' : 'Совпал ли путь с твоим прогнозом? Почему?'}</label><textarea id="explanation" rows={2} maxLength={1500} value={shown.notes.observation} onChange={(event) => updateObservation(shown, event.target.value)} placeholder="Я заметил(а), что…" /><p className="field-hint">Наблюдение можно дописать позже. Условия и результат не меняются.</p></div>}
-              <div className="main-actions">
+              {shown && <div className={`observation-field${highlight('observation')}`}><label htmlFor="explanation">{shown.missionId === 'trap' ? 'Что делает такса? Опиши наблюдаемое поведение.' : 'Совпал ли путь с твоим прогнозом? Почему?'}</label><textarea id="explanation" rows={2} maxLength={1500} value={shown.notes.observation} aria-describedby={guideInLab && guide.step === 'observation' ? 'onboarding-instruction' : undefined} onChange={(event) => updateObservation(shown, event.target.value)} placeholder="Я заметил(а), что…" /><p className="field-hint">Наблюдение можно дописать позже. Условия и результат не меняются.</p></div>}
+              <div className={`main-actions${highlight('training')}${highlight('check')}`}>
                 {viewed ? <PixelButton onClick={returnToCurrent}>К текущему опыту</PixelButton>
                   : busy ? <PixelButton onClick={stop} secondary>Остановить {lab.status === 'training' ? 'тренировку' : 'проверку'}</PixelButton>
                     : pendingReplacement && isTrap ? <PixelButton onClick={() => dispatch({ type: 'commitPair' })}>Заменить сохранённую пару</PixelButton>
@@ -259,7 +370,7 @@ export function App() {
           {!pair?.first && !lesson.home && <div className="empty-state"><img src={dog} alt="Пиксельная такса" /><h2>Здесь будут твои опыты</h2><p>Заверши тренировку и посмотри путь. Результат сохранится автоматически.</p><PixelButton onClick={() => switchSection('lab')}>Открыть лабораторию</PixelButton></div>}
           {viewed && playground}
         </>}
-        {section === 'guide' && <LearningGuide />}
+        {section === 'guide' && <LearningGuide onRestart={replayOnboarding} />}
       </main>
       <footer className="footer-small">GoWeinerDog · Учебная модель алгоритма, не руководство по дрессировке.</footer>
     </div>

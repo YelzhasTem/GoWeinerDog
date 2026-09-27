@@ -1,18 +1,23 @@
-export function LearningGuide() {
+import { PixelButton } from './controls';
+
+export function LearningGuide({ onRestart }: { onRestart?: () => void }) {
   return <section className="learning-guide" aria-labelledby="guide-title">
     <p className="eyebrow">Немного о машинном обучении</p>
     <h1 id="guide-title">Как это работает</h1>
     <p className="section-copy">У таксы нет готового пути. Программа учится выбирать действия по наградам за собственные шаги.</p>
+    {onRestart && <div className="onboarding-restart"><PixelButton secondary onClick={onRestart}>Пройти знакомство ещё раз</PixelButton></div>}
     <div className="guide-terms">
       <article><span aria-hidden="true">01</span><h2>Попытка</h2><p>Одна прогулка от старта до домика или до лимита шагов. Следующая попытка снова начинается на старте.</p></article>
       <article><span aria-hidden="true">02</span><h2>Награда</h2><p>Число после действия. Шаг стоит 1 очко, возвращение домой даёт награду. В ловушке каждый новый вход к лакомству тоже приносит очки.</p></article>
       <article><span aria-hidden="true">03</span><h2>Обучение</h2><p>Сначала такса часто пробует случайные действия. После каждого шага программа обновляет оценки действий. Каждая новая тренировка начинает эти оценки с нуля.</p></article>
       <article><span aria-hidden="true">04</span><h2>Проверка</h2><p>Такса выбирает действие с лучшей выученной оценкой. Случайных проб и обучения больше нет. Просмотр пути показывает уже рассчитанные шаги.</p></article>
     </div>
+    <details className="guide-experiment"><summary>Разбор эксперимента</summary>
     <article className="guide-example"><h2>Много очков — ещё не домик</h2>
       <p>При бонусе +5 уйти с клетки лакомства стоит −1, а вернуться — даёт −1 + 5 = +4. За два шага выходит +3. Такса может повторять этот круг, пока не закончится лимит.</p>
       <p>При бонусе +1 тот же круг даёт −1 + (−1 + 1) = −1. Проведи новое обучение и проверь, изменится ли путь. Очки и возвращение домой показаны отдельно.</p>
     </article>
+    </details>
     <details className="guide-details"><summary>Подробнее: что обновляет Q-learning?</summary>
       <p>Для каждой клетки и каждого из четырёх направлений есть число Q — оценка будущих наград. Это маленькая таблица, поэтому нейросеть здесь не нужна. Таблица меняется от опыта: именно поэтому это машинное обучение.</p>
       <p className="q-formula">Q ← Q + α × (награда + γ × лучшая оценка следующей клетки − Q)</p>

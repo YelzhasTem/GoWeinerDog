@@ -1,0 +1,127 @@
+/* Подсказки находятся в потоке страницы: площадка и кнопка остановки доступны. */
+.onboarding-welcome { padding: 16px 0 28px; max-width: 980px; margin-inline: auto; }
+.welcome-panel { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(190px, 1fr); gap: 24px 30px; padding: clamp(20px, 4vw, 40px) !important; overflow: hidden; }
+.welcome-copy { min-width: 0; }
+.welcome-copy .eyebrow { font-size: 11px; letter-spacing: .6px; margin-bottom: 14px; }
+.welcome-copy h1 { max-width: 590px; font-size: clamp(29px, 3.5vw, 43px); line-height: 1.15; letter-spacing: -1.25px; }
+.welcome-role { margin-top: 19px; font-size: 16px; line-height: 1.65; }
+.welcome-model { margin-top: 12px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.welcome-scene { position: relative; min-height: 280px; align-self: center; background: #e9edda; border: 2px solid #a0ae87; box-shadow: 5px 5px #d6d9bd; isolation: isolate; }
+.welcome-scene::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 31%; background: #f1ddba; border-block: 2px solid #cfb68e; z-index: -1; }
+.welcome-scene::after { content: ''; position: absolute; inset: 10px; border: 1px solid #c6cfaf; z-index: -2; }
+.welcome-scene img { image-rendering: pixelated; }
+.welcome-dog { position: absolute; width: min(87%, 250px); bottom: 44px; left: 4%; filter: drop-shadow(3px 5px 0 #d8c09c); }
+.welcome-home { position: absolute; width: 80px; right: 15px; top: 18px; }
+.welcome-path { position: absolute; display: flex; gap: 13px; right: 18px; top: 46%; transform: rotate(-17deg); }
+.welcome-path img { width: 19px; height: 19px; opacity: .5; }
+.welcome-path img:nth-child(2) { transform: translateY(-5px); }
+.welcome-scene-caption { position: absolute; inset-inline: 10px; bottom: 13px; text-align: center; font-size: 11px; font-weight: 650; color: var(--green); }
+.welcome-cycle { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px; list-style: none; padding: 17px 0 0; margin: 0; border-top: 1px solid var(--line); }
+.welcome-cycle li { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; }
+.welcome-cycle li + li::before { content: '→'; color: var(--muted); margin-inline: 1px 7px; font-weight: 400; }
+.welcome-cycle-number { padding: 3px 5px; background: #e6eddc; color: var(--green); font: 700 11px/1.6 ui-monospace, monospace; }
+.welcome-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; column-gap: 23px; row-gap: 7px; }
+.welcome-actions .pixel-button { width: auto; min-width: 230px; }
+.welcome-actions > .text-button { font-size: 13px; }
+.welcome-actions > p { width: 100%; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.onboarding-card { position: relative; min-width: 0; background: #fffdf8; border: 2px solid #b6bfa0; box-shadow: 3px 3px #e2dec9; padding: 12px 16px 14px; margin: 0 0 22px; scroll-margin-block: 14px; }
+.onboarding-card-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1px 12px; margin-bottom: 7px; }
+.onboarding-progress { font-size: 11px; color: var(--green); font-weight: 750; }
+.onboarding-exit { min-height: 36px; font-size: 11px; }
+.onboarding-card-content { display: grid; grid-template-columns: 75px minmax(0, 1fr); gap: 15px; align-items: start; }
+.onboarding-dog-badge { width: 75px; min-height: 70px; display: grid; place-items: center; background: #eee8d7; border: 1px solid #d6c6af; }
+.onboarding-dog-badge img { width: 65px; height: auto; image-rendering: pixelated; }
+.onboarding-card-copy { min-width: 0; }
+.onboarding-card h2 { font-size: 19px; line-height: 1.35; margin-bottom: 6px; }
+.onboarding-card h2:focus-visible, .welcome-copy h1:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
+.onboarding-instruction { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.onboarding-instruction p + p { margin-top: 7px; }
+.onboarding-instruction strong { color: var(--chocolate); }
+.onboarding-instruction ul, .onboarding-instruction ol { padding-left: 20px; margin-block: 6px; }
+.onboarding-instruction li + li { margin-top: 4px; }
+.onboarding-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 16px; margin-top: 12px; }
+.onboarding-card-actions .pixel-button { width: auto; min-width: 160px; }
+.onboarding-card-actions > p { flex-basis: 100%; font-size: 12px; }
+.onboarding-step-marks { display: flex; gap: 4px; margin: 13px 0 0 90px; }
+.onboarding-step-marks span { height: 4px; width: 22px; background: #e3e0d2; }
+.onboarding-step-marks .is-reached { background: var(--green); }
+/* Обводка помещается в отступы панелей и не пересекает подписи или кнопки. */
+.onboarding-target { outline: 2px dashed #365c45; outline-offset: 4px; border-radius: 3px; scroll-margin-block: 18px; }
+.onboarding-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; }
+.onboarding-actions .pixel-button { width: auto; max-width: 100%; }
+.onboarding-resume { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 14px; padding: 8px 12px; background: #edf1e4; border-left: 3px solid var(--green); font-size: 13px; }
+.onboarding-invite, .onboarding-trap-hint { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 18px; background: #edf1e4; border-left: 3px solid var(--green); }
+.onboarding-invite > img { width: 58px; height: auto; flex-shrink: 0; image-rendering: pixelated; }
+.onboarding-invite > div:first-of-type, .onboarding-trap-hint > div { flex: 1; min-width: 0; }
+.onboarding-invite strong, .onboarding-trap-hint strong { font-size: 13px; }
+.onboarding-invite p, .onboarding-trap-hint p { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 3px; }
+.onboarding-invite-actions { display: flex; flex-wrap: wrap; gap: 1px 14px; }
+.onboarding-invite-actions .text-button:first-child { font-weight: 700; }
+.onboarding-trap-hint { align-items: flex-start; }
+.onboarding-trap-hint > .text-button { flex-shrink: 0; }
+.onboarding-quiz { display: grid; gap: 7px; margin-top: 12px; min-width: 0; }
+.onboarding-quiz button { text-align: left; min-height: 46px; border: 1px solid #b7a287; background: var(--cream); padding: 9px 12px; border-radius: 3px; color: var(--chocolate); font-size: 14px; line-height: 1.45; }
+.onboarding-quiz button[aria-pressed='true'] { border: 2px solid var(--green); background: #e7eedf; }
+.onboarding-quiz button:hover:enabled { background: #f1e8d6; }
+.onboarding-feedback { padding: 9px 12px; border-left: 3px solid var(--green); background: #e7eedf; margin-top: 10px; }
+.onboarding-restart { margin-top: 17px; max-width: 310px; }
+.guide-experiment { border-top: 1px solid var(--line); }
+.guide-experiment > summary { padding-block: 15px; }
+.guide-experiment .guide-example { margin-top: 2px; }
+@media (max-width: 850px) {
+  .welcome-panel { column-gap: 22px; grid-template-columns: minmax(0, 1.5fr) minmax(150px, 1fr); }
+  .welcome-scene { min-height: 230px; }
+  .welcome-home { width: 63px; }
+  .welcome-dog { bottom: 43px; }
+  .welcome-cycle li + li::before { margin-inline: 0 1px; }
+  .onboarding-invite { flex-wrap: wrap; }
+  .onboarding-invite-actions { margin-left: 70px; }
+}
+@media (max-width: 680px) {
+  .onboarding-welcome { padding-top: 0; }
+  .welcome-panel { display: flex; flex-direction: column; gap: 19px; padding: 21px 17px !important; }
+  .welcome-copy h1 { font-size: clamp(28px, 7.5vw, 38px); letter-spacing: -.8px; }
+  .welcome-copy .eyebrow { font-size: 10px; letter-spacing: .4px; margin-bottom: 11px; }
+  .welcome-role { font-size: 15px; margin-top: 14px; }
+  .welcome-model { margin-top: 9px; }
+  .welcome-scene { align-self: stretch; min-height: 160px; }
+  .welcome-dog { width: 150px; bottom: 29px; left: calc(50% - 99px); }
+  .welcome-home { width: 59px; right: 15px; top: 12px; }
+  .welcome-path { right: 25px; top: 53%; gap: 11px; }
+  .welcome-path img { width: 15px; height: 15px; }
+  .welcome-scene-caption { bottom: 8px; font-size: 10px; }
+  .welcome-cycle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 9px; padding-top: 15px; }
+  .welcome-cycle li { font-size: 12px; gap: 7px; flex-wrap: nowrap; }
+  .welcome-cycle li + li::before { display: none; }
+  .welcome-actions { display: grid; gap: 5px; text-align: center; }
+  .welcome-actions .pixel-button { width: 100%; min-width: 0; }
+  .welcome-actions .text-button { text-align: center; }
+  .welcome-actions > p { font-size: 11px; line-height: 1.5; }
+  .onboarding-card { padding: 8px 11px 12px; margin-bottom: 17px; }
+  .onboarding-card-topline { gap: 0 7px; }
+  .onboarding-card-content { grid-template-columns: 45px minmax(0, 1fr); gap: 9px; }
+  .onboarding-dog-badge { width: 45px; min-height: 44px; }
+  .onboarding-dog-badge img { width: 41px; }
+  .onboarding-card h2 { font-size: 17px; margin-bottom: 5px; }
+  .onboarding-instruction { font-size: 13px; }
+  .onboarding-card-actions { margin-top: 10px; gap: 3px; }
+  .onboarding-card-actions .pixel-button { min-width: 0; width: 100%; font-size: 13px !important; }
+  .onboarding-actions .pixel-button { width: 100%; font-size: 13px !important; }
+  .onboarding-step-marks { margin-left: 54px; }
+  .onboarding-invite { gap: 5px 10px; padding: 10px 11px; }
+  .onboarding-invite > img { width: 43px; }
+  .onboarding-invite-actions { margin-left: 53px; }
+  .onboarding-trap-hint { flex-wrap: wrap; gap: 0; padding: 10px 11px; }
+  .onboarding-trap-hint > div { flex-basis: 100%; }
+  .onboarding-quiz button { font-size: 13px; padding: 8px 9px; }
+}
+@media (max-width: 360px) {
+  .onboarding-card-content { display: block; }
+  .onboarding-dog-badge { float: left; margin: 0 9px 4px 0; }
+  .onboarding-card-actions, .onboarding-quiz { clear: both; }
+  .onboarding-step-marks { margin-left: 0; }
+  .onboarding-progress, .onboarding-exit { font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-welcome *, .onboarding-card *, .onboarding-target { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

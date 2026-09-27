@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers';
 
 // Отдельные пустые браузерные сессии: проверка не использует авторизацию Vercel.
 test.use({ storageState: { cookies: [], origins: [] } });
