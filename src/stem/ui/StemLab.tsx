@@ -239,6 +239,8 @@ function TestCard({ state, dispatch }: { state: StemState; dispatch: Dispatch })
     // Решения принимает только модель. Ученик в этот момент ничего не выбирает.
     const result = runTest(model, level.examples, tests);
     skip.current = reducedMotion();
+    // На телефоне поле теста должно быть видно целиком, пока бот решает.
+    requestAnimationFrame(() => document.getElementById('test-title')?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' }));
     for (let index = 0; index < result.items.length; index += 1) {
       if (!alive.current) return;
       setRun({ result, index });
