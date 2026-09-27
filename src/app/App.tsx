@@ -12,14 +12,24 @@ import { RoutePlayer } from '../ui/RoutePlayer';
 import { ResultsPanel } from '../ui/ResultsPanel';
 import { ExperimentComparison } from '../ui/ExperimentComparison';
 import { LearningGuide } from '../ui/LearningGuide';
+import { StemLab } from '../stem/ui/StemLab';
 import { GuideCard, OnboardingInvite, TrapHint, Welcome } from '../ui/Onboarding';
 import dog from '../assets/pixel/dachshund.svg';
 import home from '../assets/pixel/home.svg';
 import fence from '../assets/pixel/fence.svg';
 import treat from '../assets/pixel/treat.svg';
 
-type Section = 'lab' | 'experiments' | 'guide';
-const sectionNames = { lab: 'Лаборатория', experiments: 'Мои опыты', guide: 'Как это работает' };
+type Section = 'teach' | 'lab' | 'experiments' | 'guide';
+const sectionNames = { teach: 'Обучи бота', lab: 'Q-лаборатория', experiments: 'Мои опыты', guide: 'Как это работает' };
+// Новичок начинает со STEM-лаборатории «Обучи бота». Браузер помнит, в какой
+// из двух лабораторий ученик был в последний раз.
+const SECTION_KEY = 'goweinerdog.section.v1';
+function loadSection(): Section {
+  try {
+    const saved = localStorage.getItem(SECTION_KEY);
+    return saved === 'lab' ? 'lab' : 'teach';
+  } catch { return 'teach'; }
+}
 const format = new Intl.NumberFormat('ru-RU');
 const rewardText = (value: number) => `${value < 0 ? '−' : '+'}${format.format(Math.abs(value))}`;
 
@@ -50,7 +60,7 @@ export function App() {
   const [existingLesson] = useState(() => Boolean(legacyInitial.state) || JSON.stringify(initial.state) !== JSON.stringify(emptyLesson()));
   const [controller] = useState(() => createLabController());
   const lab = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const [section, setSection] = useState<Section>('lab');
+  const [section, setSection] = useState<Section>(loadSection);
   const [storageWarning, setStorageWarning] = useState(initial.warning);
   const [storageSaved, setStorageSaved] = useState(Boolean(initial.state.home || initial.state.working.first || initial.state.savedPair) && !initial.warning);
   const writtenState = useRef(lesson);
@@ -121,7 +131,12 @@ export function App() {
   }, [onboarding]);
 
   useEffect(() => () => controller.dispose(), [controller]);
-  useEffect(() => { document.title = `GoWeinerDog — ${sectionNames[section]}`; }, [section]);
+  useEffect(() => {
+    document.title = `GoWeinerDog — ${sectionNames[section]}`;
+    // Запоминаем только часть приложения: разделы Q-лаборатории после перезагрузки
+    // открываются, как и раньше, с самой лаборатории.
+    try { localStorage.setItem(SECTION_KEY, section === 'teach' ? 'teach' : 'lab'); } catch { /* раздел просто не запомнится */ }
+  }, [section]);
   // Только изменения занятия попадают в localStorage. Кадр и скорость просмотра — отдельно.
   useEffect(() => {
     if (writtenState.current === lesson) return;
@@ -348,7 +363,7 @@ export function App() {
       <nav className="section-nav" aria-label="Разделы">{(Object.keys(sectionNames) as Section[]).map((key) => <button type="button" key={key} aria-current={section === key ? 'page' : undefined} onClick={() => switchSection(key)}>{sectionNames[key]}</button>)}</nav>
       <p className="sidebar-note">Маленькая такса.<br />Настоящее обучение.</p>
     </aside>
-    <div className="workspace"><header className="workspace-header"><span>Игровая лаборатория машинного обучения</span><p className="storage-status" data-testid="storage-status">{storageWarning ? 'Сохранение требует внимания' : storageSaved ? 'Занятие сохранено в этом браузере.' : 'Сохраняем только последнее занятие.'}</p></header>
+    <div className="workspace"><header className="workspace-header"><span>Игровая лаборатория машинного обучения</span><p className="storage-status" data-testid="storage-status" hidden={section === 'teach'}>{storageWarning ? 'Сохранение требует внимания' : storageSaved ? 'Занятие сохранено в этом браузере.' : 'Сохраняем только последнее занятие.'}</p></header>
       {storageWarning && <p className="storage-warning" role="alert" data-testid="storage-warning">{storageWarning}</p>}
       {legacyInitial.warning && <p className="storage-warning" role="alert">{legacyInitial.warning}</p>}
       {legacyLesson && <p className="saved-pair-note" data-testid="legacy-notice">Прежнее занятие сохранено в «Моих опытах» как архив правил v1. Новые тренировки используют правила v2: одно лакомство за попытку. Архив не пересчитан и не смешивается с новыми опытами.</p>}
@@ -407,6 +422,7 @@ export function App() {
           {!pair?.first && !lesson.home && !legacyLesson && <div className="empty-state"><img src={dog} alt="Пиксельная такса" /><h2>Здесь будут твои опыты</h2><p>Заверши тренировку и посмотри путь. Результат сохранится автоматически.</p><PixelButton onClick={() => switchSection('lab')}>Открыть лабораторию</PixelButton></div>}
           {viewed && playground}
         </>}
+        {section === 'teach' && <div className="stem-root"><StemLab onOpenQLab={() => switchSection('lab')} /></div>}
         {section === 'guide' && <LearningGuide onRestart={replayOnboarding} />}
       </main>
       <footer className="footer-small">GoWeinerDog · Учебная модель алгоритма, не руководство по дрессировке.</footer>

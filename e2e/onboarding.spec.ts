@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ONBOARDING_KEY } from './helpers';
+import { ONBOARDING_KEY, startInQLab } from './helpers';
+
+test.beforeEach(async ({ page }) => { await startInQLab(page); });
 
 const LESSON_KEY = 'goweinerdog.lesson.v2';
 const card = (page: Page) => page.getByTestId('onboarding-card');
@@ -150,7 +152,7 @@ test('первый вход → реальное обучение → прове
   await expect(example).not.toBeVisible();
 
   // Сброс занятия очищает опыты, но не стирает отдельное завершённое знакомство.
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await page.getByRole('button', { name: 'Начать заново', exact: true }).click();
   await expect(page.getByTestId('goal-result')).toHaveText('Не проверяли');
   expect((await readLesson(page)).home).toBeNull();
@@ -309,9 +311,11 @@ for (const fault of ['corrupt', 'denied', 'quota'] as const) {
       else Storage.prototype.setItem = function () { throw new DOMException('Quota for test', 'QuotaExceededError'); };
     }, { key: ONBOARDING_KEY, scenario: fault });
     await page.goto('/');
+    // Без хранилища раздел не запоминается: приложение открывается на «Обучи бота».
+    if (fault === 'denied') await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
     await page.getByRole('button', { name: 'Сразу в лабораторию', exact: true }).click();
     await page.getByRole('button', { name: 'Как это работает', exact: true }).click();
-    await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+    await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
     await expect(page.getByTestId('onboarding-welcome')).toHaveCount(0);
     await trainAndCheck(page);
     await expect(page.getByTestId('reward-result')).toHaveText('10');
