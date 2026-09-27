@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" shape-rendering="crispEdges">
+  <title>Лакомство — печенье в форме косточки</title>
+  <path fill="#35231D" d="M5 9h8v3h14V9h8v3h3v7h-3v2h3v7h-3v3h-8v-3H13v3H5v-3H2v-7h3v-2H2v-7h3z"/>
+  <path fill="#B96E36" d="M6 11h6v3h16v-3h6v3h2v4h-3v4h3v4h-2v3h-6v-3H12v3H6v-3H4v-4h3v-4H4v-4h2z"/>
+  <path fill="#E8AD55" d="M7 12h4v4h18v-4h4v3h2v2h-4v6h4v2h-2v3h-4v-4H11v4H7v-3H5v-2h4v-6H5v-2h2z"/>
+  <path fill="#FFF7ED" d="M7 13h3v2H7zM13 17h14v2H13zM30 13h3v2h-3z"/>
+  <path fill="#B96E36" d="M13 21h3v2h-3zM20 20h2v2h-2zM26 22h2v2h-2z"/>
+</svg>

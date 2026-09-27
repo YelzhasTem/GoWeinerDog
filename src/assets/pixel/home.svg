@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" shape-rendering="crispEdges">
+  <title>Домик таксы</title>
+  <path fill="#35231D" d="M5 16h30v21H5z"/>
+  <path fill="#B96E36" d="M7 17h26v18H7z"/>
+  <path fill="#D79554" d="M7 20h26v3H7zM7 27h26v2H7zM7 33h26v2H7z"/>
+  <path fill="#35231D" d="M17 22h6v2h3v13H14V24h3z"/>
+  <path fill="#704128" d="M18 24h4v2h2v9h-8v-9h2z"/>
+  <path fill="#35231D" d="M17 3h6v3h4v3h4v3h4v3h4v6H1v-6h4v-3h4V9h4V6h4z"/>
+  <path fill="#365C45" d="M18 5h4v3h4v3h4v3h4v3h3v2H3v-2h3v-3h4v-3h4V8h4z"/>
+  <path fill="#577B52" d="M18 7h4v2h-4zM14 10h4v2h-4zM10 13h4v2h-4zM6 16h4v2H6z"/>
+  <path fill="#E8AD55" d="M18 14h4v3h-4z"/>
+  <path fill="#35231D" d="M3 35h34v3H3z"/>
+  <path fill="#FFF7ED" d="M7 19h26v1H7z"/>
+</svg>

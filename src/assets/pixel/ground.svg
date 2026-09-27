@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" shape-rendering="crispEdges">
+  <title>Клетка дорожки</title>
+  <path fill="#FFF7ED" d="M0 0h40v40H0z"/>
+  <path fill="#EADCC8" d="M4 7h3v2H4zM31 4h2v2h-2zM33 29h3v2h-3zM8 32h2v2H8z"/>
+  <path fill="#F2E7D7" d="M14 17h3v2h-3zM24 33h2v2h-2zM26 11h2v2h-2z"/>
+</svg>

@@ -1,0 +1,9 @@
+# Локальные зависимости, сборка и результаты проверок не нужны удалённой сборке.
+node_modules
+dist
+test-results*
+playwright-report
+.vitest
+.vercel
+.env*
+.DS_Store

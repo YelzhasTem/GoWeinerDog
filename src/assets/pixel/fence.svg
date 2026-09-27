@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" shape-rendering="crispEdges">
+  <title>Ограждение</title>
+  <path fill="#35231D" d="M2 11h28v6H2zM2 22h28v5H2z"/>
+  <path fill="#8C4C2A" d="M4 13h24v2H4zM4 24h24v1H4z"/>
+  <path fill="#35231D" d="M5 3h4v2h2v24H3V5h2zM23 3h4v2h2v24h-8V5h2z"/>
+  <path fill="#B96E36" d="M6 5h2v2h1v20H5V7h1zM24 5h2v2h1v20h-4V7h1z"/>
+  <path fill="#D79554" d="M5 8h2v18H5zM23 8h2v18h-2z"/>
+  <path fill="#35231D" d="M7 13h1v2H7zM25 13h1v2h-1zM7 24h1v2H7zM25 24h1v2h-1z"/>
+  <path fill="#365C45" d="M2 29h10v2H2zM20 29h10v2H20z"/>
+</svg>

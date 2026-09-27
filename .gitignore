@@ -1,0 +1,17 @@
+node_modules/
+dist/
+test-results*
+playwright-report/
+.vitest/
+.DS_Store
+.vercel
+.env*
+coverage/
+*.log
+*.tsbuildinfo
+*.swp
+*.swo
+*~
+._*
+Thumbs.db
+Desktop.ini
