@@ -173,7 +173,7 @@ test('завершённая пара защищена при новой поп�
   await expect(page.getByTestId('reward-result')).toHaveText('12');
   await expect(page.getByTestId('playback-step')).toHaveText('0 / 5');
   await page.getByRole('button', { name: 'К текущему опыту', exact: true }).click();
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await expect(page.locator('#treat-bonus')).toHaveValue('4');
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
@@ -196,7 +196,7 @@ test('переходы между разделами сохраняют Worker, 
   await expect(page.getByTestId('run-status')).toContainText('Тренировка:');
   await page.getByRole('button', { name: 'Как это работает', exact: true }).click();
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Тренировка завершена');
   await expect(page.locator('#prediction')).toHaveValue(firstPrediction);
   expect(workers).toHaveLength(1);
@@ -207,7 +207,7 @@ test('переходы между разделами сохраняют Worker, 
   await page.locator('#prediction').fill(secondPrediction);
   await page.getByRole('button', { name: 'Как это работает', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).focus();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#prediction')).toHaveValue(secondPrediction);
   await page.locator('#treat-bonus').focus();
@@ -246,7 +246,7 @@ test('новая пара заменяет сохранённую только �
   await expect(page.getByRole('button', { name: 'Заменить сохранённую пару', exact: true }).first()).toBeEnabled();
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
   await expectSavedPair(page);
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await page.getByRole('button', { name: 'Заменить сохранённую пару', exact: true }).first().click();
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
   await expect(page.getByTestId('experience-1-bonus')).toHaveText('+4');
@@ -267,7 +267,7 @@ test('сохранённый путь +5 сохраняет единый кон�
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
   await page.getByRole('button', { name: 'Путь опыта 1', exact: true }).click();
   await expect(page.getByTestId('ground')).toHaveAttribute('aria-label', /Бонус 5 за первый сбор в попытке/);
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ловушка лакомства.');
   await expect(page.getByTestId('saved-view')).toContainText('бонус +5');
@@ -326,7 +326,7 @@ test('сохранённый путь домой с seed 7 не смешивае
   await page.locator('#prediction').fill(trapDraft);
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
   await page.getByRole('button', { name: 'Путь домой', exact: true }).click();
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Дорога домой.');
   await expect(page.getByTestId('saved-view')).toContainText('Дорога домой');
@@ -391,7 +391,11 @@ for (const fault of ['corrupt-json', 'unknown-version', 'storage-getter', 'quota
     }, { key: STORAGE_KEY, scenario: fault });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    if (fault === 'storage-getter') await page.getByRole('button', { name: 'Сразу в лабораторию', exact: true }).click();
+    if (fault === 'storage-getter') {
+      // Без хранилища раздел не запоминается: приложение открывается на «Обучи бота».
+      await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
+      await page.getByRole('button', { name: 'Сразу в лабораторию', exact: true }).click();
+    }
     if (fault === 'quota') await page.locator('#prediction').fill('Запись не должна мешать работе в памяти.');
     await expect(page.getByTestId('storage-warning')).toBeVisible();
     await expect(page.getByTestId('storage-warning')).toHaveAttribute('role', 'alert');

@@ -99,7 +99,7 @@ test('архив v1 сохраняет исходные пути, Q и заме�
   await expect(page.getByTestId('reward-result')).toHaveText('150');
   await expect(page.getByTestId('treat-result')).toHaveText('50');
   await expect(page.getByTestId('goal-result')).toHaveText('До домика не дошла');
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await expect(page.getByTestId('saved-view')).toContainText('Архив · правила v1');
   await expect(page.locator('#treat-bonus')).toHaveValue('5');
   await expect(page.locator('#treat-bonus')).toBeDisabled();
@@ -117,7 +117,7 @@ test('архив v1 сохраняет исходные пути, Q и заме�
   // Первая миссия старого занятия тоже отображается в собственном контексте.
   await page.getByRole('button', { name: 'Мои опыты', exact: true }).click();
   await archive.locator('article').filter({ has: page.getByRole('heading', { name: 'Дорога домой · v1', exact: true }) }).getByRole('button', { name: /^Путь архива/ }).click();
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await expect(page.getByRole('heading', { name: /^Дорога домой/ })).toBeVisible();
   await expect(page.locator('#treat-bonus')).toHaveCount(0);
   await expect(page.getByTestId('reward-result')).toHaveText('10');
@@ -145,7 +145,7 @@ test('архив v1 сохраняет исходные пути, Q и заме�
   await expect(archive).toContainText(legacyFixture.drafts.home.prediction);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('legacy-and-current-lessons.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Лаборатория', exact: true }).click();
+  await page.getByRole('button', { name: 'Q-лаборатория', exact: true }).click();
   await page.getByRole('button', { name: 'Начать заново', exact: true }).click();
   await page.reload();
   expect(await page.evaluate((key) => localStorage.getItem(key), OLD_KEY)).toBe(oldRaw);

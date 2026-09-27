@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" shape-rendering="crispEdges">
+  <title>Камень — препятствие</title>
+  <path fill="#35231D" d="M13 8h12v3h5v4h4v6h3v12h-3v3H6v-3H3V22h3v-6h4v-5h3z"/>
+  <path fill="#8A7F74" d="M14 10h10v3h5v4h4v6h2v9h-3v2H8v-2H5v-9h3v-6h4v-4h2z"/>
+  <path fill="#B3A89A" d="M15 12h8v3h-8zM11 16h6v3h-6zM24 17h4v3h-4zM8 23h4v3H8z"/>
+  <path fill="#6B6158" d="M22 25h9v3h-9zM12 29h8v2h-8zM28 21h4v2h-4z"/>
+  <path fill="#365C45" d="M3 36h34v2H3z"/>
+</svg>

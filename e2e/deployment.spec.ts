@@ -36,7 +36,7 @@ test('публичная сборка доступна анонимно: HTML, C
   await expect(page.getByRole('heading', { name: /Дорога домой/, level: 1 })).toBeVisible();
   await expect(page.getByTestId('ground')).toBeVisible();
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(255, 247, 237)');
-  await expect(page.getByRole('button', { name: 'Лаборатория', exact: true })).toHaveCSS('background-color', 'rgb(54, 92, 69)');
+  await expect(page.getByRole('button', { name: 'Q-лаборатория', exact: true })).toHaveCSS('background-color', 'rgb(54, 92, 69)');
   await expect.poll(() => page.locator('img').evaluateAll((images) => images.length > 0
     && images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
 
